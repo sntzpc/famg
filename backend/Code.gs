@@ -373,11 +373,13 @@ function public_getParticipantByNIK_(p){
   const rows = getAll_(SH.participants);
   const r = rows.find(x => String(x.nik)===nik);
   if(!r) return null;
+  const region = (r.region !== undefined && String(r.region) !== '') ? r.region : r.position;
+  const unit   = (r.unit   !== undefined && String(r.unit)   !== '') ? r.unit   : r.department;
   return {
     nik: r.nik,
     name: r.name,
-    position: r.position,
-    department: r.department,
+    region: region,
+    unit: unit,
     is_staff: bool_(r.is_staff),
     family: safeJson_(r.family_json, [])
   };
@@ -418,6 +420,8 @@ function public_submitAttendance_(p){
     event_id: eventId,
     nik: part.nik,
     name: part.name,
+    region: part.region || '',
+    unit: part.unit || '',
     family_json: JSON.stringify(family),
     timestamp: nowIso_()
   };
@@ -714,8 +718,8 @@ function admin_participantsList_(){
   const rows = getAll_(SH.participants).map(r=>({
     nik:String(r.nik),
     name:String(r.name),
-    position:String(r.position),
-    department:String(r.department),
+    region:String((r.region!==undefined && String(r.region) !== '') ? r.region : (r.position||'')),
+    unit:String((r.unit!==undefined && String(r.unit) !== '') ? r.unit : (r.department||'')),
     is_staff: bool_(r.is_staff),
     family: safeJson_(r.family_json, [])
   }));
@@ -728,8 +732,8 @@ function admin_participantsUpsert_(p){
   const obj = {
     nik: String(it.nik),
     name: String(it.name||''),
-    position: String(it.position||''),
-    department: String(it.department||''),
+    region: String((it.region!==undefined && String(it.region) !== '') ? it.region : (it.position||'')),
+    unit: String((it.unit!==undefined && String(it.unit) !== '') ? it.unit : (it.department||'')),
     is_staff: bool_(it.is_staff) ? 'TRUE' : 'FALSE',
     family_json: JSON.stringify(Array.isArray(it.family)?it.family:[])
   };
@@ -1205,8 +1209,8 @@ function attendanceRow_(it){
 function setup(){
   if(SPREADSHEET_ID.indexOf('PASTE_')===0) throw new Error('Isi SPREADSHEET_ID dulu');
 
-  ensureSheet_(SH.participants, ['nik','name','position','department','is_staff','family_json']);
-  ensureSheet_(SH.attendance, ['id','event_id','nik','name','family_json','timestamp']);
+  ensureSheet_(SH.participants, ['nik','name','region','unit','is_staff','family_json']);
+  ensureSheet_(SH.attendance, ['id','event_id','nik','name','region','unit','family_json','timestamp']);
   ensureSheet_(SH.events, ['id','day','date','time','title','description','location','icon','color','sort']);
   ensureSheet_(SH.current, ['id','event_id','updated_at','updated_by']);
   ensureSheet_(SH.prizes, ['id','name','qty_total','qty_remaining','image_url','active']);
@@ -1220,7 +1224,12 @@ function setup(){
 
   seedInitialData_();
 
-  SpreadsheetApp.getActive().toast('Setup selesai. Silakan cek sheet dan Deploy Web App.');
+  // ✅ toast yang aman untuk standalone project
+  try{
+    ss_().toast('Setup selesai. Silakan cek sheet dan Deploy Web App.');
+  }catch(err){
+    Logger.log('Setup selesai (toast tidak tersedia): ' + err);
+  }
 }
 
 function seedInitialData_(){
@@ -1249,11 +1258,11 @@ function seedInitialData_(){
   const p = getAll_(SH.participants);
   if(p.length===0){
     const sample = [
-      { nik:'12345678', name:'Budi Santoso', position:'Manager', department:'Produksi', is_staff:'FALSE', family_json: JSON.stringify(['Budi Santoso','Sari Dewi (Istri)','Rizky Pratama (Anak)','Sinta Noviana (Anak)']) },
-      { nik:'87654321', name:'Ahmad Hidayat', position:'Supervisor', department:'Keuangan', is_staff:'FALSE', family_json: JSON.stringify(['Ahmad Hidayat','Lisa Permata (Istri)','Fajar Ramadan (Anak)']) },
-      { nik:'11223344', name:'Siti Nurhaliza', position:'Staff', department:'SDM', is_staff:'TRUE', family_json: JSON.stringify(['Siti Nurhaliza','Rudi Hartono (Suami)','Maya Indah (Anak)','Dika Pratama (Anak)']) },
-      { nik:'55667788', name:'Rina Wijaya', position:'Manager', department:'Marketing', is_staff:'FALSE', family_json: JSON.stringify(['Rina Wijaya','Joko Susilo (Suami)']) },
-      { nik:'99887766', name:'Andi Setiawan', position:'Staff', department:'Operasional', is_staff:'TRUE', family_json: JSON.stringify(['Andi Setiawan','Mira Lestari (Istri)','Kevin Maulana (Anak)','Sari Dewi (Anak)','Budi Santoso (Anak)']) }
+      { nik:'12345678', name:'Budi Santoso', region:'Manager', unit:'Produksi', is_staff:'FALSE', family_json: JSON.stringify(['Budi Santoso','Sari Dewi (Istri)','Rizky Pratama (Anak)','Sinta Noviana (Anak)']) },
+      { nik:'87654321', name:'Ahmad Hidayat', region:'Supervisor', unit:'Keuangan', is_staff:'FALSE', family_json: JSON.stringify(['Ahmad Hidayat','Lisa Permata (Istri)','Fajar Ramadan (Anak)']) },
+      { nik:'11223344', name:'Siti Nurhaliza', region:'Staff', unit:'SDM', is_staff:'TRUE', family_json: JSON.stringify(['Siti Nurhaliza','Rudi Hartono (Suami)','Maya Indah (Anak)','Dika Pratama (Anak)']) },
+      { nik:'55667788', name:'Rina Wijaya', region:'Manager', unit:'Marketing', is_staff:'FALSE', family_json: JSON.stringify(['Rina Wijaya','Joko Susilo (Suami)']) },
+      { nik:'99887766', name:'Andi Setiawan', region:'Staff', unit:'Operasional', is_staff:'TRUE', family_json: JSON.stringify(['Andi Setiawan','Mira Lestari (Istri)','Kevin Maulana (Anak)','Sari Dewi (Anak)','Budi Santoso (Anak)']) }
     ];
     sample.forEach(it=> upsertByKey_(SH.participants,'nik',it));
   }
@@ -1308,8 +1317,8 @@ function findParticipantByNik_(nik){
   return {
     nik: String(r.nik),
     name: String(r.name||''),
-    position: String(r.position||''),
-    department: String(r.department||''),
+    region: String((r.region!==undefined && String(r.region) !== '') ? r.region : (r.position||'')),
+    unit: String((r.unit!==undefined && String(r.unit) !== '') ? r.unit : (r.department||'')),
     is_staff: String(r.is_staff||'')
   };
 }
@@ -1373,13 +1382,35 @@ function public_pushLiveLocation_(p){
 function admin_liveLocations_(p, u){
   const cfg = configGet_();
 
-  // Ambil event location dari config (mengikuti pola config.js Anda)
+  // Ambil event location dari config
   const loc = (cfg && cfg.event && cfg.event.location) ? cfg.event.location : null;
   if(!loc) throw new Error('Config event.location belum ada');
 
-  const centerLat = Number(loc.lat);
-  const centerLng = Number(loc.lng);
-  const radiusM = Number(loc.radius || 0);
+  // ✅ Kompatibilitas: support coordinates.latitude/longitude (baru)
+  //    dan lat/lng (lama)
+  const centerLat = Number(
+    (loc.coordinates && loc.coordinates.latitude != null) ? loc.coordinates.latitude :
+    (loc.latitude != null) ? loc.latitude :
+    loc.lat
+  );
+
+  const centerLng = Number(
+    (loc.coordinates && loc.coordinates.longitude != null) ? loc.coordinates.longitude :
+    (loc.longitude != null) ? loc.longitude :
+    loc.lng
+  );
+
+  // ✅ Kompatibilitas radius:
+  //    geofencingRadius (baru) atau radius (lama)
+  const radiusM = Number(
+    (loc.geofencingRadius != null) ? loc.geofencingRadius :
+    (loc.radius != null) ? loc.radius :
+    0
+  );
+
+  if(!isFinite(centerLat) || !isFinite(centerLng)){
+    throw new Error('Config event.location coordinates tidak valid (latitude/longitude)');
+  }
 
   const liveRows = getAll_(SH.live); // latest per nik
   const now = Date.now();
@@ -1387,6 +1418,7 @@ function admin_liveLocations_(p, u){
   const rows = liveRows.map(r=>{
     const lat = Number(r.lat);
     const lng = Number(r.lng);
+
     const updatedAt = String(r.updated_at||'');
     const updMs = Date.parse(updatedAt);
     const agoMs = Number.isFinite(updMs) ? (now - updMs) : NaN;
@@ -1402,7 +1434,9 @@ function admin_liveLocations_(p, u){
       name: String(r.name||''),
       lat: isFinite(lat)? lat : null,
       lng: isFinite(lng)? lng : null,
-      accuracy: r.accuracy,
+      accuracy: (r.accuracy!=null && r.accuracy!=='') ? Number(r.accuracy) : null,
+      speed: (r.speed!=null && r.speed!=='') ? Number(r.speed) : null,
+      heading: (r.heading!=null && r.heading!=='') ? Number(r.heading) : null,
       ts_client: r.ts_client,
       updated_at: updatedAt,
       updated_ago: Number.isFinite(agoMs) ? fmtAgo_(agoMs) : '-',
@@ -1419,7 +1453,13 @@ function admin_liveLocations_(p, u){
   });
 
   return {
-    center: { lat:centerLat, lng:centerLng, radius: radiusM, name: String(loc.name||'') },
+    center: {
+      lat: centerLat,
+      lng: centerLng,
+      radius: radiusM,
+      name: String(loc.name||''),
+      address: String(loc.address||'')
+    },
     rows
   };
 }

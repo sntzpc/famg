@@ -153,12 +153,16 @@ async function loadPrizeImgToEl(imgEl, fileIdOrUrl){
   function bindTabs(){
     $$('.tab-btn').forEach(btn=>{
       btn.addEventListener('click',()=>{
-        const tab = btn.dataset.tab;
-        $$('.tab-btn').forEach(b=>b.className = 'tab-btn px-4 py-2 rounded-xl bg-gray-100');
-        btn.className = 'tab-btn px-4 py-2 rounded-xl bg-blue-600 text-white';
-        $$('.tab').forEach(t=>t.classList.add('hidden'));
-        $('#tab-'+tab)?.classList.remove('hidden');
-      });
+      const tab = btn.dataset.tab;
+
+      // ✅ kalau keluar dari Live tab, stop polling
+      if(tab !== 'live') liveStopPolling();
+
+      $$('.tab-btn').forEach(b=>b.className = 'tab-btn px-4 py-2 rounded-xl bg-gray-100');
+      btn.className = 'tab-btn px-4 py-2 rounded-xl bg-blue-600 text-white';
+      $$('.tab').forEach(t=>t.classList.add('hidden'));
+      $('#tab-'+tab)?.classList.remove('hidden');
+    });
     });
   }
 
@@ -361,13 +365,13 @@ function bindFamilyRowActions(root){
     [
       {key:'nik',label:'NIK'},
       {key:'name',label:'Nama'},
-      {key:'position',label:'Jabatan'},
-      {key:'department',label:'Dept'},
+      {key:'region',label:'Region'},
+      {key:'unit',label:'Unit'},
       {key:'is_staff',label:'Staff?'},
       {key:'family_count',label:'Anggota Keluarga'}
     ],
     cache.participants.map(x=>({
-      nik:x.nik, name:x.name, position:x.position, department:x.department,
+      nik:x.nik, name:x.name, region:x.region, unit:x.unit,
       is_staff: (x.is_staff===true || String(x.is_staff||'').toUpperCase()==='TRUE') ? 'Y' : 'N',
       family_count:(x.family||[]).length
     })),
@@ -394,12 +398,12 @@ function bindFamilyRowActions(root){
           </div>
 
           <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1">Jabatan</label>
-            <input id="p_position" class="w-full p-3 border rounded-xl" placeholder="Mis: Staff / Supervisor / Manager" />
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Region</label>
+            <input id="p_region" class="w-full p-3 border rounded-xl" placeholder="Mis: Badau / Kenepai / Empanang" />
           </div>
           <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1">Departemen</label>
-            <input id="p_department" class="w-full p-3 border rounded-xl" placeholder="Mis: SDM / Produksi / Keuangan" />
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Unit</label>
+            <input id="p_unit" class="w-full p-3 border rounded-xl" placeholder="Mis: SRIE / STWE / SMWE" />
           </div>
 
           <div class="md:col-span-2">
@@ -431,8 +435,8 @@ function bindFamilyRowActions(root){
       onSave: async ({ root, close })=>{
         const nik = root.querySelector('#p_nik')?.value?.trim() || (cur?.nik||'');
         const name = root.querySelector('#p_name')?.value?.trim() || '';
-        const position = root.querySelector('#p_position')?.value?.trim() || '';
-        const department = root.querySelector('#p_department')?.value?.trim() || '';
+        const region = root.querySelector('#p_region')?.value?.trim() || '';
+        const unit = root.querySelector('#p_unit')?.value?.trim() || '';
         const is_staff = !!root.querySelector('#p_is_staff')?.checked;
 
         if(!nik){ utils.showNotification('NIK wajib diisi','warning'); return; }
@@ -452,7 +456,7 @@ function bindFamilyRowActions(root){
           return true;
         });
 
-        await FGAPI.admin.participantsUpsert(token, { nik, name, position, department, is_staff, family });
+        await FGAPI.admin.participantsUpsert(token, { nik, name, region, unit, is_staff, family });
         utils.showNotification('Peserta tersimpan','success');
         close();
         await loadParticipants();
@@ -463,15 +467,15 @@ function bindFamilyRowActions(root){
     const overlay = document.querySelector('.fixed.inset-0.z-\\[9999\\]'); // modal terakhir
     const nikEl = overlay.querySelector('#p_nik');
     const nameEl = overlay.querySelector('#p_name');
-    const posEl = overlay.querySelector('#p_position');
-    const depEl = overlay.querySelector('#p_department');
+    const regionEl = overlay.querySelector('#p_region');
+    const unitEl = overlay.querySelector('#p_unit');
     const staffEl = overlay.querySelector('#p_is_staff');
 
     if(cur){
       nikEl.value = cur.nik || '';
       nameEl.value = cur.name || '';
-      posEl.value = cur.position || '';
-      depEl.value = cur.department || '';
+      regionEl.value = cur.region || '';
+      unitEl.value = cur.unit || '';
       staffEl.checked = (cur.is_staff===true || String(cur.is_staff||'').toUpperCase()==='TRUE');
       setFamilyFromArray(overlay, cur.family||[]);
     }else{
@@ -2182,13 +2186,16 @@ function settingsCollectPatch(){
 
     document.getElementById('live-refresh')?.addEventListener('click', ()=> liveFetchAndRender(true));
 
-    // init map
-    setTimeout(()=> liveInitMap(), 50);
-
-    // start polling hanya saat tab live dibuka
-    // (hook: ketika klik tab)
-    const liveBtn = document.querySelector('.tab-btn[data-tab="live"]');
+        const liveBtn = document.querySelector('.tab-btn[data-tab="live"]');
     liveBtn?.addEventListener('click', ()=>{
+      // ✅ init map saat tab sudah ditampilkan
+      liveInitMap();
+
+      // ✅ WAJIB: Leaflet hitung ulang ukuran setelah tab visible
+      setTimeout(()=>{
+        try{ live.map?.invalidateSize(true); }catch{}
+      }, 120);
+
       liveStartPolling();
       liveFetchAndRender(true);
     });
@@ -2287,8 +2294,10 @@ function settingsCollectPatch(){
         live.layerMarkers.clearLayers();
         const pts = [];
         rows.forEach(r=>{
-          if(!Number.isFinite(r.lat) || !Number.isFinite(r.lng)) return;
-          pts.push([r.lat, r.lng]);
+          const lat = Number(r.lat);
+          const lng = Number(r.lng);
+          if(!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+          pts.push([lat, lng]);
 
           const txt = `
             <div style="font-weight:700">${htmlEsc(r.name||'')}</div>
@@ -2298,8 +2307,7 @@ function settingsCollectPatch(){
             <div>Status: <b>${r.in_radius ? 'DALAM' : 'LUAR'}</b></div>
           `;
 
-          const marker = L.circleMarker([r.lat, r.lng], {
-            radius: 7
+          const marker = L.circleMarker([r.lat, r.lng], {   radius: 7
           }).bindPopup(txt);
 
           live.layerMarkers.addLayer(marker);
@@ -2310,6 +2318,7 @@ function settingsCollectPatch(){
         if(fitPts.length >= 1){
           const b = L.latLngBounds(fitPts);
           live.map.fitBounds(b.pad(0.25));
+          try{ live.map?.invalidateSize(false); }catch{}
         }
       }
     }catch(e){

@@ -60,7 +60,7 @@ Operator:
 
 CATATAN DOORPRIZE
 -----------------
-- Yang diundi hanya peserta dengan position = "Staff" (case-insensitive mengandung kata "staff")
+- Yang diundi hanya peserta dengan is_staff = TRUE (kolom is_staff pada sheet participants)
 - Pemenang yang pernah muncul (meskipun dihapus) tidak akan ikut undian doorprize berikutnya.
 - Tombol "Hapus & Acak" akan:
   (1) mengubah status pemenang menjadi NO_SHOW

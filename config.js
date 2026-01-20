@@ -31,8 +31,8 @@ window.AppConfig = {
             
             // Koordinat geofencing (titik pusat)
             coordinates: {
-                latitude: 0.960484631752835,   // Latitude Novotel Pontianak
-                longitude: 111.89255411462112, // Longitude Novotel Pontianak
+                latitude: 0.960484631752835,   // Latitude Lokasi Acara
+                longitude: 111.89255411462112, // Longitude Lokasi Acara
                 accuracy: 50           // Akurasi dalam meter
             },
             
@@ -149,14 +149,43 @@ window.AppConfig = {
         }
     },
     
-    getEventLocation: function() {
-        return {
-            lat: this.event.location.coordinates.latitude,
-            lng: this.event.location.coordinates.longitude,
-            radius: this.event.location.geofencingRadius,
-            name: this.event.location.name,
-            address: this.event.location.address
-        };
+    getEventLocation(){
+      const loc = (AppConfig.event && AppConfig.event.location) ? AppConfig.event.location : {};
+
+      // ✅ support format baru: location.coordinates.latitude/longitude
+      // ✅ support format legacy: location.lat/lng atau location.latitude/longitude
+      const lat = Number(
+        (loc.coordinates && loc.coordinates.latitude != null) ? loc.coordinates.latitude :
+        (loc.latitude != null) ? loc.latitude :
+        loc.lat
+      );
+
+      const lng = Number(
+        (loc.coordinates && loc.coordinates.longitude != null) ? loc.coordinates.longitude :
+        (loc.longitude != null) ? loc.longitude :
+        loc.lng
+      );
+
+      // ✅ support radius baru: geofencingRadius
+      // ✅ support radius legacy: radius
+      const radius = Number(
+        (loc.geofencingRadius != null) ? loc.geofencingRadius :
+        (loc.radius != null) ? loc.radius :
+        0
+      );
+
+      const acc = Number(
+        (loc.coordinates && loc.coordinates.accuracy != null) ? loc.coordinates.accuracy :
+        (loc.accuracy != null) ? loc.accuracy :
+        50
+      );
+
+      return {
+        lat, lng, radius,
+        accuracy: acc,
+        name: String(loc.name || ''),
+        address: String(loc.address || '')
+      };
     },
     
     // Validasi apakah tanggal saat ini adalah tanggal acara
