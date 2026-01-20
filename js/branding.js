@@ -1,15 +1,60 @@
 // ===============================
-// FG2026 Branding Loader (Multi-Event)
-// - Pull config from server (public.getConfig)
+// FG2026 Branding + Config Loader (Multi-Event)
+// - Default config from config.js (window.AppConfig)
+// - Remote patch from server (public.getConfig) loaded ONCE (deduped)
 // - Apply branding/text to pages (index/doorprize/rundown)
 // ===============================
 (function(){
-  const FGBranding = {};
+  // -----------------------------
+  // FGConfig: singleton loader
+  // -----------------------------
+  const FGConfig = (function(){
+    let _promise = null;
+    let _loaded = false;
 
-  function getCfg(){
-    try{ return window.AppConfig || {}; }catch{ return {}; }
-  }
+    function getCfg(){
+      try{ return window.AppConfig || {}; }catch{ return {}; }
+    }
 
+    async function _loadRemoteOnce(){
+      try{
+        if(!window.FGAPI || !window.FGAPI.public || !window.FGAPI.public.getConfig) return { ok:false, changed:false };
+        const r = await window.FGAPI.public.getConfig();
+        const patch = r && r.config ? r.config : null;
+
+        if(patch && window.AppConfig && typeof window.AppConfig.applyPatch === 'function'){
+          // applyPatch(patch, persistToLocalStorage=true)
+          window.AppConfig.applyPatch(patch, true);
+          return { ok:true, changed:true };
+        }
+        return { ok:true, changed:false };
+      }catch(e){
+        // fallback to local defaults silently
+        return { ok:false, changed:false, error:e };
+      }
+    }
+
+    function ensureLoaded(){
+      if(_loaded) return Promise.resolve({ ok:true, changed:false, cached:true });
+      if(_promise) return _promise; // ✅ dedupe: only one request
+
+      _promise = (async ()=>{
+        const res = await _loadRemoteOnce();
+        _loaded = true;
+        return res;
+      })();
+
+      return _promise;
+    }
+
+    return { getCfg, ensureLoaded };
+  })();
+
+  window.FGConfig = FGConfig;
+
+  // -----------------------------
+  // Branding helpers
+  // -----------------------------
   function setText(id, value){
     const el = document.getElementById(id);
     if(!el) return;
@@ -21,7 +66,6 @@
     if(str === undefined || str === null) return '';
     const s = String(str);
     return s.replace(/\{([a-zA-Z0-9_.-]+)\}/g, (_, key)=>{
-      // support {a.b.c} lookup
       let v = '';
       try{
         if(!ctx) v = '';
@@ -29,26 +73,9 @@
         else if(key.includes('.')){
           v = key.split('.').reduce((a,k)=> (a && typeof a === 'object') ? a[k] : undefined, ctx);
         }
-      }catch(e){
-        v = '';
-      }
+      }catch(e){ v = ''; }
       return v === undefined || v === null ? '' : String(v);
     });
-  }
-
-  async function loadRemoteConfig(){
-    try{
-      if(!window.FGAPI || !window.FGAPI.public || !window.FGAPI.public.getConfig) return false;
-      const r = await window.FGAPI.public.getConfig();
-      const patch = r && r.config ? r.config : null;
-      if(patch && window.AppConfig && typeof window.AppConfig.applyPatch === 'function'){
-        window.AppConfig.applyPatch(patch, true);
-        return true;
-      }
-    }catch(e){
-      // ignore
-    }
-    return false;
   }
 
   function detectPageKey(){
@@ -60,10 +87,8 @@
     return 'index';
   }
 
-  function apply(pageKey){
-    const cfg = getCfg();
+  function buildCtx(cfg){
     const brand = cfg.app && cfg.app.brand ? cfg.app.brand : {};
-    const pages = cfg.app && cfg.app.pages ? cfg.app.pages : {};
 
     // Year token (prefer eventStartDate year, fallback current year)
     let year = '';
@@ -75,8 +100,7 @@
       try{ year = String(new Date().getFullYear()); }catch(_){ year=''; }
     }
 
-    const ctx = {
-      // most-used tokens
+    return {
       appName: brand.appName || '',
       shortName: brand.shortName || '',
       headerTitle: brand.headerTitle || '',
@@ -84,7 +108,7 @@
       adminSubtitle: brand.adminSubtitle || '',
       eventName: (cfg.event && cfg.event.name) ? cfg.event.name : '',
       year,
-      // optional tokens
+
       eventStartDate: (cfg.event && cfg.event.eventStartDate) ? cfg.event.eventStartDate : '',
       eventEndDate: (cfg.event && cfg.event.eventEndDate) ? cfg.event.eventEndDate : '',
       galaStart: (cfg.event && cfg.event.galaDinnerDate) ? cfg.event.galaDinnerDate : '',
@@ -92,7 +116,7 @@
       locationName: (cfg.event && cfg.event.location && cfg.event.location.name) ? cfg.event.location.name : '',
       locationAddress: (cfg.event && cfg.event.location && cfg.event.location.address) ? cfg.event.location.address : '',
 
-      // nested (for {brand.appName}, {event.name}, dll)
+      // nested for {brand.*} {event.*}
       brand: {
         appName: brand.appName || '',
         shortName: brand.shortName || '',
@@ -112,9 +136,18 @@
         }
       }
     };
+  }
 
-    // --- common header on index (if exists) ---
+  function apply(pageKey){
+    const cfg = FGConfig.getCfg();
+    const brand = cfg.app && cfg.app.brand ? cfg.app.brand : {};
+    const pages = cfg.app && cfg.app.pages ? cfg.app.pages : {};
+    const ctx = buildCtx(cfg);
+
+    // common doc title
     if(brand.appName) document.title = brand.appName;
+
+    // common header on index (if exists)
     if(brand.headerTitle) setText('main-event-title', brand.headerTitle);
     if(brand.headerSubtitle) setText('main-event-date', brand.headerSubtitle);
 
@@ -127,7 +160,6 @@
       setText('presence-title', tpl(p.presenceTitle || '', ctx));
       setText('presence-subtitle', tpl(p.presenceSubtitle || '', ctx));
       setText('presence-location-note', tpl(p.presenceLocationNote || '', ctx));
-
       setText('already-attended-msg', tpl(p.alreadyAttendedMsg || '', ctx));
 
       setText('app-event-title', tpl(p.appHeaderTitle || '', ctx));
@@ -156,18 +188,25 @@
     }
   }
 
-  FGBranding.loadAndApply = async function(pageKey){
+  async function loadAndApply(pageKey){
     const key = pageKey || detectPageKey();
-    // apply local defaults first
-    apply(key);
-    // then remote override
-    const changed = await loadRemoteConfig();
-    if(changed) apply(key);
-  };
 
-  window.FGBranding = FGBranding;
+    // ✅ apply local defaults first (fast, no wait)
+    apply(key);
+
+    // ✅ ensure remote patch loaded ONCE, then re-apply if changed
+    const res = await FGConfig.ensureLoaded();
+    if(res && res.changed) apply(key);
+
+    // 🔔 optional broadcast: other modules can refresh UI after config is final
+    try{
+      document.dispatchEvent(new CustomEvent('fg:config-ready', { detail: { changed: !!(res && res.changed) } }));
+    }catch(e){}
+  }
+
+  window.FGBranding = { loadAndApply };
 
   document.addEventListener('DOMContentLoaded', ()=>{
-    FGBranding.loadAndApply();
+    loadAndApply();
   });
 })();

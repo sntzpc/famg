@@ -5,16 +5,22 @@
 // ===============================
 
 window.FGAPI = (function(){
-  const URL = (window.AppConfig?.api?.url || '').trim();
+  // ✅ Jangan cache URL di awal file.
+  // Karena AppConfig bisa di-override (patch) setelah halaman terbuka.
+  function getUrl(){
+    return String(window.AppConfig?.api?.url || '').trim();
+  }
 
   function ensureUrl(){
-    if(!URL || URL.includes('PASTE_YOUR_GAS_WEBAPP_URL_HERE')){
+    const url = getUrl();
+    if(!url || url.includes('PASTE_YOUR_GAS_WEBAPP_URL_HERE')){
       throw new Error('API URL belum diisi. Buka config.js lalu isi AppConfig.api.url dengan URL Web App GAS Anda.');
     }
+    return url;
   }
 
   async function post(action, payload = {}, token = ''){
-    ensureUrl();
+    const URL = ensureUrl();
     const params = new URLSearchParams();
     params.set('action', action);
     params.set('payload', JSON.stringify(payload || {}));

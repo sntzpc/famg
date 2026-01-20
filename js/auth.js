@@ -4,11 +4,51 @@ class Auth {
         this.currentUser = null;
         this.attended = false;
         this.utils = window.utils || new Utils();
+
         this.initializeElements();
+
+        // ✅ Apply branding cepat dari config.js (local default)
         this.applyBranding();
-        this.loadRemoteConfig();
+
+        // ✅ Countdown & status awal pakai default dulu (cepat)
         this.initRegistrationCountdown();
         this.loadAttendanceStatus();
+
+        // ✅ Dedupe remote config (tidak dobel dengan branding.js)
+        this.ensureConfigAndRefresh();
+        this.listenConfigReady();
+    }
+
+    // ✅ Tidak fetch sendiri lagi (branding.js yang fetch, FGConfig yang dedupe)
+    async ensureConfigAndRefresh(){
+        try{
+            if(window.FGConfig && typeof window.FGConfig.ensureLoaded === 'function'){
+                const res = await window.FGConfig.ensureLoaded();
+                // Kalau berubah, refresh UI
+                if(res && res.changed){
+                    this.applyBranding();
+                    // countdown akan auto render tiap detik, tapi kita paksa render ulang agar segera mengikuti config baru
+                    this.initRegistrationCountdown();
+                    this.updateEventInfo();
+                }
+            }
+        }catch(e){
+            // diamkan: pakai default config.js
+        }
+    }
+
+    // ✅ Jika branding.js broadcast 'fg:config-ready', auth ikut refresh juga
+    listenConfigReady(){
+        document.addEventListener('fg:config-ready', (ev)=>{
+            try{
+                const changed = !!(ev && ev.detail && ev.detail.changed);
+                if(changed){
+                    this.applyBranding();
+                    this.initRegistrationCountdown();
+                    this.updateEventInfo();
+                }
+            }catch(e){}
+        });
     }
 
     initializeElements() {
@@ -23,22 +63,9 @@ class Auth {
         this.authSection = document.getElementById('auth-section');
         this.appSection = document.getElementById('app-section');
         this.logoutBtn = document.getElementById('logout-btn');
-        
+
         this.bindEvents();
     }
-    async loadRemoteConfig(){
-        try{
-            const r = await window.FGAPI.public.getConfig();
-            const patch = r?.config || null;
-            if(patch && window.AppConfig?.applyPatch){
-            window.AppConfig.applyPatch(patch, true); // simpan ke localStorage juga
-            }
-            // setelah patch diterapkan, refresh branding
-            this.applyBranding();
-        }catch(e){
-            // diamkan: pakai default config.js
-        }
-        }
 
     // ===============================
     // ✅ Branding UI dari AppConfig (tanpa hardcode)

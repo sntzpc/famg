@@ -217,7 +217,10 @@ window.AppConfig = {
     }
 };
 
-var AppConfig = window.AppConfig;
+// NOTE:
+// Jangan buat alias var AppConfig = window.AppConfig;
+// Karena setelah patch/override, window.AppConfig bisa diganti wrapper baru.
+// Semua modul harus membaca window.AppConfig secara langsung.
 
 (function(){
   const LS_KEY = 'fg_config_patch_v1';
@@ -284,12 +287,41 @@ var AppConfig = window.AppConfig;
     // methods existing (mengikuti config kamu)
     getEventDate(){ return new Date(AppConfig.event.galaDinnerDate); },
     getEventLocation(){
+      // ✅ support format baru: location.coordinates.latitude/longitude
+      // ✅ support format legacy: location.lat/lng atau location.latitude/longitude
+      const loc = (AppConfig.event && AppConfig.event.location) ? AppConfig.event.location : {};
+
+      const lat = Number(
+        (loc.coordinates && loc.coordinates.latitude != null) ? loc.coordinates.latitude :
+        (loc.latitude != null) ? loc.latitude :
+        loc.lat
+      );
+
+      const lng = Number(
+        (loc.coordinates && loc.coordinates.longitude != null) ? loc.coordinates.longitude :
+        (loc.longitude != null) ? loc.longitude :
+        loc.lng
+      );
+
+      // ✅ support radius baru: geofencingRadius
+      // ✅ support radius legacy: radius
+      const radius = Number(
+        (loc.geofencingRadius != null) ? loc.geofencingRadius :
+        (loc.radius != null) ? loc.radius :
+        0
+      );
+
+      const acc = Number(
+        (loc.coordinates && loc.coordinates.accuracy != null) ? loc.coordinates.accuracy :
+        (loc.accuracy != null) ? loc.accuracy :
+        50
+      );
+
       return {
-        lat: AppConfig.event.location.coordinates.latitude,
-        lng: AppConfig.event.location.coordinates.longitude,
-        radius: AppConfig.event.location.geofencingRadius,
-        name: AppConfig.event.location.name,
-        address: AppConfig.event.location.address
+        lat, lng, radius,
+        accuracy: acc,
+        name: String(loc.name || ''),
+        address: String(loc.address || '')
       };
     },
     isValidEventDate(dateToCheck = new Date()){
