@@ -2115,10 +2115,15 @@ function settingsCollectPatch(){
   // ==========================
   let live = {
     map: null,
-    layerMarkers: null,
+    markerCluster: null,
     centerCircle: null,
     polling: null,
-    lastData: null
+    lastData: null,
+    hasFitOnce: false,
+
+    filter: 'all',       // 'all' | 'in' | 'out'
+    lastCenter: null,    // simpan center terakhir untuk zoom
+    lastPts: []          // simpan titik terakhir untuk zoom
   };
 
   function fmtMsAgo(ms){
@@ -2159,15 +2164,25 @@ function settingsCollectPatch(){
           <div class="rounded-2xl border p-4">
             <div class="text-sm text-gray-500">Rekap</div>
             <div class="mt-2 grid grid-cols-2 gap-2">
-              <div class="rounded-xl bg-green-50 border border-green-100 p-3">
-                <div class="text-xs text-green-700">Dalam radius</div>
-                <div id="cnt-in" class="text-2xl font-extrabold text-green-800">0</div>
-              </div>
-              <div class="rounded-xl bg-red-50 border border-red-100 p-3">
-                <div class="text-xs text-red-700">Di luar radius</div>
-                <div id="cnt-out" class="text-2xl font-extrabold text-red-800">0</div>
-              </div>
-            </div>
+            <button id="btn-in" class="text-left rounded-xl bg-green-50 border border-green-100 p-3 hover:opacity-90">
+              <div class="text-xs text-green-700">Dalam radius</div>
+              <div id="cnt-in" class="text-2xl font-extrabold text-green-800">0</div>
+              <div class="text-[11px] text-green-700/70 mt-1">Klik: zoom & filter</div>
+            </button>
+
+            <button id="btn-out" class="text-left rounded-xl bg-red-50 border border-red-100 p-3 hover:opacity-90">
+              <div class="text-xs text-red-700">Di luar radius</div>
+              <div id="cnt-out" class="text-2xl font-extrabold text-red-800">0</div>
+              <div class="text-[11px] text-red-700/70 mt-1">Klik: zoom & filter</div>
+            </button>
+          </div>
+
+          <div class="mt-2 flex flex-wrap items-center gap-2">
+            <button id="btn-all" class="px-3 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-xs font-semibold">
+              Tampilkan Semua
+            </button>
+            <div class="text-xs text-gray-500">Filter: <span id="live-filter" class="font-semibold">ALL</span></div>
+          </div>
             <div class="mt-2 text-xs text-gray-500">Last update: <span id="live-last">-</span></div>
           </div>
 
@@ -2186,10 +2201,25 @@ function settingsCollectPatch(){
 
     document.getElementById('live-refresh')?.addEventListener('click', ()=> liveFetchAndRender(true));
 
+    // ✅ filter buttons
+      document.getElementById('btn-all')?.addEventListener('click', ()=>{
+        liveSetFilter('all', true);
+      });
+      document.getElementById('btn-in')?.addEventListener('click', ()=>{
+        // klik badge = set filter IN + zoom ke yang IN
+        liveSetFilter('in', true);
+        liveZoomToGroup('in');
+      });
+      document.getElementById('btn-out')?.addEventListener('click', ()=>{
+        liveSetFilter('out', true);
+        liveZoomToGroup('out');
+      });
+
         const liveBtn = document.querySelector('.tab-btn[data-tab="live"]');
     liveBtn?.addEventListener('click', ()=>{
       // ✅ init map saat tab sudah ditampilkan
       liveInitMap();
+      liveEnsureLegend();
 
       // ✅ WAJIB: Leaflet hitung ulang ukuran setelah tab visible
       setTimeout(()=>{
@@ -2203,21 +2233,132 @@ function settingsCollectPatch(){
     // kalau awalnya tab live yang terbuka: boleh nyala
   }
 
+  function liveSetFilter(filter, refresh){
+      const f = (filter === 'in' || filter === 'out') ? filter : 'all';
+      live.filter = f;
+      liveLegendUpdateUI();
+
+      // refresh render marker dari lastData tanpa fetch ulang
+      if(refresh) liveRenderMarkersFromLastData(true);
+    }
+
+    function liveRenderMarkersFromLastData(forceFit){
+    const data = live.lastData;
+    if(!data || !live.map) return;
+
+    const center = data?.center || null;
+    const rows = Array.isArray(data?.rows) ? data.rows : [];
+    if(!center || !Number.isFinite(center.lat) || !Number.isFinite(center.lng)) return;
+
+    live.lastCenter = center;
+
+    // circle lokasi event
+    if(live.centerCircle) live.centerCircle.remove();
+    live.centerCircle = L.circle([center.lat, center.lng], { radius: Number(center.radius||0) }).addTo(live.map);
+
+    if(live.markerCluster && live.markerCluster.clearLayers) live.markerCluster.clearLayers();
+
+    const pts = [];
+    rows.forEach(r=>{
+      const lat = Number(r.lat);
+      const lng = Number(r.lng);
+      if(!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+      const isInside = (r.in_radius === true);
+
+      // ✅ filter logic
+      if(live.filter === 'in' && !isInside) return;
+      if(live.filter === 'out' && isInside) return;
+
+      pts.push([lat, lng]);
+
+      const txt = `
+        <div style="font-weight:700">${htmlEsc(r.name||'')}</div>
+        <div>NIK: ${htmlEsc(r.nik||'')}</div>
+        <div>Jarak: ${htmlEsc(r.distance_m!=null ? Math.round(r.distance_m)+'m' : '-')}</div>
+        <div>Update: ${htmlEsc(r.updated_ago||'-')}</div>
+        <div>Status: <b>${isInside ? 'DALAM' : 'LUAR'}</b></div>
+      `;
+
+      const marker = liveMakeDotMarker(lat, lng, isInside).bindPopup(txt);
+      live.markerCluster.addLayer(marker);
+    });
+
+    live.lastPts = pts;
+
+    // fit bounds
+    const fitPts = [[center.lat, center.lng], ...pts];
+    if(fitPts.length){
+      const b = L.latLngBounds(fitPts).pad(0.25);
+      if(forceFit){
+        live.map.fitBounds(b);
+        live.hasFitOnce = true;
+      }
+    }
+
+    try{ live.map.invalidateSize(false); }catch{}
+  }
+
+  function liveZoomToGroup(group){ // group: 'in' | 'out' | 'all'
+    const data = live.lastData;
+    if(!data || !live.map) return;
+
+    const center = live.lastCenter || data.center;
+    const rows = Array.isArray(data?.rows) ? data.rows : [];
+
+    const pts = [];
+    rows.forEach(r=>{
+      const lat = Number(r.lat);
+      const lng = Number(r.lng);
+      if(!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+      const isInside = (r.in_radius === true);
+      if(group === 'in' && !isInside) return;
+      if(group === 'out' && isInside) return;
+      pts.push([lat, lng]);
+    });
+
+    // kalau kosong, minimal zoom ke center
+    if(!pts.length && center && Number.isFinite(center.lat) && Number.isFinite(center.lng)){
+      live.map.setView([center.lat, center.lng], 16);
+      return;
+    }
+
+    const fitPts = (center && Number.isFinite(center.lat) && Number.isFinite(center.lng))
+      ? [[center.lat, center.lng], ...pts]
+      : pts;
+
+    const b = L.latLngBounds(fitPts).pad(0.30);
+    live.map.fitBounds(b);
+  }
+
   function liveInitMap(){
     const el = document.getElementById('live-map');
     if(!el || live.map) return;
     if(!window.L){ el.innerHTML = 'Leaflet tidak ter-load'; return; }
 
     live.map = L.map(el, { zoomControl:true });
+
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap'
     }).addTo(live.map);
 
-    live.layerMarkers = L.layerGroup().addTo(live.map);
+    // ✅ Cluster group (kalau lib belum ada, fallback ke layerGroup biasa)
+    if(window.L.MarkerClusterGroup){
+      live.markerCluster = L.markerClusterGroup({
+        showCoverageOnHover: false,
+        spiderfyOnMaxZoom: true,
+        disableClusteringAtZoom: 18,
+        maxClusterRadius: 60
+      }).addTo(live.map);
+    }else{
+      console.warn('MarkerCluster belum ter-load. Fallback ke layerGroup.');
+      live.markerCluster = L.layerGroup().addTo(live.map);
+    }
 
-    // default view (akan di-fit setelah data masuk)
     live.map.setView([0,0], 2);
+    liveEnsureLegend();
   }
 
   function liveStartPolling(){
@@ -2233,15 +2374,83 @@ function settingsCollectPatch(){
     if(el) el.textContent = 'OFF';
   }
 
+  function liveMakeDotMarker(lat, lng, isInside){
+    const cls = isInside ? 'in' : 'out';
+    const icon = L.divIcon({
+      className: '', // kosong supaya tidak ada style default
+      html: `<div class="live-dot ${cls}"></div>`,
+      iconSize: [12,12],
+      iconAnchor: [6,6]
+    });
+    return L.marker([lat, lng], { icon });
+  }
+
+  function liveEnsureLegend(){
+  const mapEl = document.getElementById('live-map');
+  if(!mapEl) return;
+  if(mapEl.querySelector('.live-legend')) return;
+
+  // pastikan parent bisa jadi anchor absolute
+  mapEl.style.position = mapEl.style.position || 'relative';
+
+  const div = document.createElement('div');
+  div.className = 'live-legend';
+  div.innerHTML = `
+    <div class="ttl"><i class="fas fa-map-marker-alt"></i> Legend</div>
+    <div class="muted">Klik filter untuk tampilkan titik</div>
+
+    <div class="row">
+      <span class="pill"><span class="live-dot in"></span> Hijau = Dalam</span>
+    </div>
+    <div class="row">
+      <span class="pill"><span class="live-dot out"></span> Merah = Luar</span>
+    </div>
+
+    <div class="row" style="margin-top:10px;">
+      <button type="button" data-f="all">All</button>
+      <button type="button" data-f="in">Dalam</button>
+      <button type="button" data-f="out">Luar</button>
+    </div>
+  `;
+
+  // bind click
+  div.querySelectorAll('button[data-f]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const f = btn.getAttribute('data-f') || 'all';
+      liveSetFilter(f, true);
+    });
+  });
+
+  mapEl.appendChild(div);
+  liveLegendUpdateUI();
+}
+
+function liveLegendUpdateUI(){
+    const mapEl = document.getElementById('live-map');
+    const legend = mapEl?.querySelector('.live-legend');
+    if(!legend) return;
+
+    legend.querySelectorAll('button[data-f]').forEach(btn=>{
+      const f = btn.getAttribute('data-f');
+      btn.classList.toggle('active', f === live.filter);
+    });
+
+    const lab = document.getElementById('live-filter');
+    if(lab){
+      lab.textContent =
+        live.filter === 'in' ? 'DALAM' :
+        live.filter === 'out' ? 'LUAR' : 'ALL';
+    }
+  }
+
   async function liveFetchAndRender(force){
     try{
       const data = await FGAPI.admin.liveLocations(token);
       live.lastData = data;
 
-      const center = data?.center || null;
       const rows = Array.isArray(data?.rows) ? data.rows : [];
 
-      // split in/out
+      // split in/out (untuk rekap & tabel selalu pakai semua rows)
       const inside = rows.filter(x=>x.in_radius===true);
       const outside = rows.filter(x=>x.in_radius!==true);
 
@@ -2282,45 +2491,11 @@ function settingsCollectPatch(){
       document.getElementById('tbl-in').innerHTML = rowHtml(inside);
       document.getElementById('tbl-out').innerHTML = rowHtml(outside);
 
-      // map render
-      if(live.map && center && Number.isFinite(center.lat) && Number.isFinite(center.lng)){
-        // circle lokasi event
-        if(live.centerCircle) live.centerCircle.remove();
-        live.centerCircle = L.circle([center.lat, center.lng], {
-          radius: Number(center.radius||0)
-        }).addTo(live.map);
-
-        // markers
-        live.layerMarkers.clearLayers();
-        const pts = [];
-        rows.forEach(r=>{
-          const lat = Number(r.lat);
-          const lng = Number(r.lng);
-          if(!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-          pts.push([lat, lng]);
-
-          const txt = `
-            <div style="font-weight:700">${htmlEsc(r.name||'')}</div>
-            <div>NIK: ${htmlEsc(r.nik||'')}</div>
-            <div>Jarak: ${htmlEsc(r.distance_m!=null ? Math.round(r.distance_m)+'m' : '-')}</div>
-            <div>Update: ${htmlEsc(r.updated_ago||'-')}</div>
-            <div>Status: <b>${r.in_radius ? 'DALAM' : 'LUAR'}</b></div>
-          `;
-
-          const marker = L.circleMarker([r.lat, r.lng], {   radius: 7
-          }).bindPopup(txt);
-
-          live.layerMarkers.addLayer(marker);
-        });
-
-        // fit bounds
-        const fitPts = [[center.lat, center.lng], ...pts];
-        if(fitPts.length >= 1){
-          const b = L.latLngBounds(fitPts);
-          live.map.fitBounds(b.pad(0.25));
-          try{ live.map?.invalidateSize(false); }catch{}
-        }
+      // ✅ MAP: delegasikan render marker ke helper (lebih rapi + siap filter)
+      if(live.map){
+        liveRenderMarkersFromLastData(force);
       }
+
     }catch(e){
       console.warn('liveFetchAndRender error', e);
     }
