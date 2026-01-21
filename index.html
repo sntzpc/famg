@@ -64,10 +64,9 @@
                         class="w-full sm:flex-grow p-4 border border-gray-300 rounded-xl sm:rounded-r-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
                         placeholder="Contoh: 12345678"
                     >
-                    <button
-                        id="check-nik-btn"
-                        class="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-teal-500 text-white font-semibold px-6 py-4 sm:py-0 rounded-xl sm:rounded-l-none hover:opacity-90 transition"
-                    >
+                    <button id="check-nik-btn"
+                        data-loading-text="Memverifikasi..."
+                        class="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-teal-500 text-white font-semibold px-6 py-4 sm:py-0 rounded-xl sm:rounded-l-none hover:opacity-90 transition">
                         <i class="fas fa-check mr-2"></i>Verifikasi
                     </button>
                     </div>
@@ -101,7 +100,9 @@
                         <div id="family-list" class="space-y-3 mb-6"></div>
                         
                         <div class="flex justify-end">
-                            <button id="confirm-attendance-btn" class="bg-gradient-to-r from-blue-600 to-teal-500 text-white font-semibold py-3 px-8 rounded-xl hover:opacity-90 transition flex items-center">
+                            <button id="confirm-attendance-btn"
+                                data-loading-text="Menyimpan..."
+                                class="bg-gradient-to-r from-blue-600 to-teal-500 text-white font-semibold py-3 px-8 rounded-xl hover:opacity-90 transition flex items-center">
                                 <i class="fas fa-calendar-check mr-2"></i>Konfirmasi Kehadiran
                             </button>
                         </div>
@@ -115,7 +116,8 @@
                         </div>
                         <h3 class="text-2xl font-bold text-gray-800 mb-2">Kehadiran Sudah Dikonfirmasi!</h3>
                         <p class="text-gray-600 mb-6" id="already-attended-msg">Terima kasih telah menghadiri Gala Dinner Family Gathering KMP1 2026</p>
-                        <button id="enter-app-btn" class="bg-gradient-to-r from-blue-600 to-teal-500 text-white font-semibold py-3 px-8 rounded-xl hover:opacity-90 transition">
+                        <button id="enter-app-btn" data-loading-text="Membuka..."
+                            class="bg-gradient-to-r from-blue-600 to-teal-500 text-white font-semibold py-3 px-8 rounded-xl hover:opacity-90 transition">
                             Masuk ke Aplikasi <i class="fas fa-arrow-right ml-2"></i>
                         </button>
                     </div>
@@ -354,6 +356,54 @@
   // kalau ada DOM yang dinamis
   const mo = new MutationObserver(()=> scan());
   mo.observe(document.documentElement, { childList:true, subtree:true, attributes:true, attributeFilter:['src'] });
+})();
+</script>
+
+<script>
+/**
+ * Button Spinner Helper (ringan, reusable)
+ * Pakai: withBtnSpinner(btn, async ()=> { ... })
+ */
+(function(){
+  function setBtnLoading(btn, on, label){
+    if(!btn) return;
+    if(on){
+      if(btn.dataset._origHtml == null) btn.dataset._origHtml = btn.innerHTML;
+      if(btn.dataset._origDisabled == null) btn.dataset._origDisabled = btn.disabled ? '1' : '0';
+
+      const text = label || btn.dataset.loadingText || 'Memproses...';
+      btn.disabled = true;
+      btn.classList.add('is-loading');
+
+      // Pastikan spinner tidak dobel
+      btn.innerHTML = `
+        <span class="btn-spinner mr-2" aria-hidden="true"></span>
+        <span>${text}</span>
+      `;
+    }else{
+      const orig = btn.dataset._origHtml;
+      if(orig != null) btn.innerHTML = orig;
+
+      const wasDisabled = btn.dataset._origDisabled === '1';
+      btn.disabled = wasDisabled;
+      btn.classList.remove('is-loading');
+
+      delete btn.dataset._origHtml;
+      delete btn.dataset._origDisabled;
+    }
+  }
+
+  async function withBtnSpinner(btn, fn, label){
+    setBtnLoading(btn, true, label);
+    try{
+      return await fn();
+    }finally{
+      setBtnLoading(btn, false);
+    }
+  }
+
+  // expose global biar gampang dipakai di auth.js
+  window.FGButton = { setBtnLoading, withBtnSpinner };
 })();
 </script>
 

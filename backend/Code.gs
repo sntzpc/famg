@@ -1473,3 +1473,223 @@ function fmtAgo_(agoMs){
   return h+'h';
 }
 
+/***************************************
+ * FG2026 - Auto Archive Old Data -> logs
+ * Custom for backend.zip structure
+ *
+ * live_locations_hist  : created_at
+ * live_locations       : updated_at
+ * doorprize_draws      : timestamp
+ * attendance           : timestamp
+ *
+ * logs header: ts | action | detail
+ ***************************************/
+
+const ARCHIVE_CFG = {
+  keepDays: 2,
+  // per sheet: timestamp field yang dipakai sebagai patokan umur data
+  targets: [
+    { sheet: SH.liveHist, tsField: 'created_at', action: 'ARCHIVE.live_locations_hist' },
+    { sheet: SH.live,     tsField: 'updated_at', action: 'ARCHIVE.live_locations' },
+    { sheet: SH.draws,    tsField: 'timestamp',  action: 'ARCHIVE.doorprize_draws' },
+    { sheet: SH.attendance, tsField: 'timestamp', action: 'ARCHIVE.attendance' },
+  ],
+  // safety limit agar tidak menghapus berlebihan kalau ada data “aneh”
+  maxDeletePerSheet: 20000,
+};
+
+// Jalankan manual 1x kalau mau buat trigger harian
+function setupArchiveTriggerDaily(){
+  const fn = 'archiveOldRowsToLogs';
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === fn)
+    .forEach(t => ScriptApp.deleteTrigger(t));
+
+  // setiap hari jam 01:15
+  ScriptApp.newTrigger(fn)
+    .timeBased()
+    .everyDays(1)
+    .atHour(1)
+    .nearMinute(15)
+    .create();
+
+  logAction_('ARCHIVE.trigger_setup', { ok:true, schedule:'DAILY 01:15', keepDays: ARCHIVE_CFG.keepDays });
+}
+
+/**
+ * Main job: arsip + hapus data yg > keepDays
+ * Aman untuk trigger.
+ */
+function archiveOldRowsToLogs(){
+  const s = ss_();
+
+  // pastikan logs ada (di backend Anda setup() sudah buat, tapi ini aman)
+  ensureSheet_(SH.logs, ['ts','action','detail']);
+
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - ARCHIVE_CFG.keepDays * 24 * 60 * 60 * 1000);
+
+  const runId = 'arch_' + Utilities.getUuid();
+  logAction_('ARCHIVE.run_start', {
+    runId,
+    keepDays: ARCHIVE_CFG.keepDays,
+    cutoffISO: cutoff.toISOString()
+  });
+
+  ARCHIVE_CFG.targets.forEach(t => {
+    try{
+      const res = archiveOneSheetToLogs_(t.sheet, t.tsField, cutoff, t.action, runId);
+      logAction_('ARCHIVE.sheet_summary', res);
+    }catch(err){
+      logAction_('ARCHIVE.sheet_error', {
+        runId,
+        sheet: t.sheet,
+        tsField: t.tsField,
+        error: String(err && err.message ? err.message : err)
+      });
+    }
+  });
+
+  logAction_('ARCHIVE.run_done', { runId, ts: new Date() });
+}
+
+/**
+ * Arsip baris lama dari 1 sheet:
+ * - Append ke logs: ts, action, detail(JSON)
+ * - Delete baris dari source (bottom-up)
+ */
+function archiveOneSheetToLogs_(sheetName, tsField, cutoff, actionName, runId){
+  const sh = sh_(sheetName);
+  const range = sh.getDataRange();
+  const values = range.getValues();
+
+  if(values.length < 2){
+    return {
+      runId, sheet: sheetName, tsField,
+      moved: 0, deleted: 0,
+      note: 'no data'
+    };
+  }
+
+  const headers = values[0].map(h => String(h||'').trim());
+  const tsIdx = headers.indexOf(tsField);
+  if(tsIdx < 0){
+    throw new Error(`Timestamp column not found. sheet=${sheetName} tsField=${tsField}`);
+  }
+
+  const rowsToLog = [];      // array of [ts, action, detail]
+  const deleteRowNums = [];  // row numbers in sheet (1-based)
+
+  for(let i=1;i<values.length;i++){
+    const row = values[i];
+    if(row.join('').trim()==='') continue;
+
+    const tsRaw = row[tsIdx];
+    const ts = parseDateSmart_(tsRaw);
+    if(!ts) continue; // invalid ts -> jangan hapus (lebih aman)
+
+    if(ts.getTime() < cutoff.getTime()){
+      const rowObj = {};
+      for(let c=0;c<headers.length;c++){
+        rowObj[headers[c] || ('col_'+(c+1))] = row[c];
+      }
+
+      rowsToLog.push([
+        new Date(), // logs.ts = waktu arsip (bukan timestamp asli data)
+        actionName,
+        JSON.stringify({
+          runId,
+          source_sheet: sheetName,
+          source_ts_field: tsField,
+          source_ts_value: ts,     // Date
+          cutoff: cutoff,          // Date
+          source_row_number: i+1,  // row asli di sheet
+          row: rowObj
+        })
+      ]);
+
+      deleteRowNums.push(i+1);
+    }
+  }
+
+  if(rowsToLog.length === 0){
+    return {
+      runId, sheet: sheetName, tsField,
+      moved: 0, deleted: 0,
+      note: 'nothing older than cutoff'
+    };
+  }
+
+  // 1) append ke logs
+  appendLogsRows_(rowsToLog);
+
+  // 2) delete bottom-up (safety limit)
+  const delCount = Math.min(deleteRowNums.length, ARCHIVE_CFG.maxDeletePerSheet);
+  const sorted = deleteRowNums.slice(0, delCount).sort((a,b)=>b-a);
+  sorted.forEach(rn => sh.deleteRow(rn));
+
+  return {
+    runId,
+    sheet: sheetName,
+    tsField,
+    cutoffISO: cutoff.toISOString(),
+    moved: rowsToLog.length,
+    deleted: sorted.length
+  };
+}
+
+/**
+ * Append banyak rows ke logs sekaligus
+ */
+function appendLogsRows_(rows){
+  if(!rows || !rows.length) return;
+  const logSh = sh_(SH.logs);
+  const startRow = logSh.getLastRow() + 1;
+  logSh.getRange(startRow, 1, rows.length, 3).setValues(rows);
+}
+
+/**
+ * Logger ke sheet logs: ts|action|detail
+ */
+function logAction_(action, detailObj){
+  const logSh = sh_(SH.logs);
+  logSh.appendRow([new Date(), action, JSON.stringify(detailObj || {})]);
+}
+
+/**
+ * Parsing timestamp:
+ * - Date object -> ok
+ * - string ISO / "yyyy-mm-dd ..." -> ok
+ * - string "dd/MM/yyyy HH:mm:ss" atau "dd-MM-yyyy ..." -> ok
+ * - angka (epoch ms atau sec) -> ok
+ */
+function parseDateSmart_(v){
+  if(v instanceof Date && !isNaN(v.getTime())) return v;
+
+  // epoch number
+  if(typeof v === 'number' && isFinite(v)){
+    // heuristik: > 10^12 = ms, else seconds
+    const ms = (v > 1e12) ? v : v * 1000;
+    const d = new Date(ms);
+    if(!isNaN(d.getTime())) return d;
+  }
+
+  const s = String(v||'').trim();
+  if(!s) return null;
+
+  // Date.parse (ISO, RFC, dll)
+  let d = new Date(s);
+  if(!isNaN(d.getTime())) return d;
+
+  // dd/MM/yyyy HH:mm:ss atau dd-MM-yyyy HH:mm:ss
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if(m){
+    const dd = Number(m[1]), MM = Number(m[2]), yyyy = Number(m[3]);
+    const hh = Number(m[4]||0), mi = Number(m[5]||0), ss = Number(m[6]||0);
+    d = new Date(yyyy, MM-1, dd, hh, mi, ss);
+    if(!isNaN(d.getTime())) return d;
+  }
+
+  return null;
+}
+

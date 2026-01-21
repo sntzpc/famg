@@ -9,11 +9,76 @@ class Utils {
     }
 
     this._liveLoc = null;
+
+    // Flush antrian lokasi saat jaringan kembali online
+    try {
+      window.addEventListener('online', () => this.flushLiveLocationQueue());
+    } catch {}
   }
 
   // helper agar ringkas
   getConfig() {
     return window.AppConfig || {};
+  }
+
+  // ===============================
+  // Live Location Queue (offline-first)
+  // ===============================
+  _liveLocQueueKey(){ return 'fg_live_loc_queue_v1'; }
+
+  _readLiveLocQueue(){
+    try{
+      const raw = localStorage.getItem(this._liveLocQueueKey());
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    }catch{ return []; }
+  }
+
+  _writeLiveLocQueue(arr){
+    try{
+      // batasi agar localStorage tidak bengkak
+      const max = 2000;
+      const safe = Array.isArray(arr) ? arr.slice(-max) : [];
+      localStorage.setItem(this._liveLocQueueKey(), JSON.stringify(safe));
+    }catch{}
+  }
+
+  queueLiveLocation(nik, loc){
+    try{
+      if(!nik || !loc) return;
+      const q = this._readLiveLocQueue();
+      q.push({ nik, loc });
+      this._writeLiveLocQueue(q);
+    }catch{}
+  }
+
+  async flushLiveLocationQueue(limit=100){
+    try{
+      if(!navigator.onLine) return;
+      if(!window.FGAPI?.public?.pushLiveLocation) return;
+
+      const q = this._readLiveLocQueue();
+      if(!q.length) return;
+
+      const remaining = [];
+      let sent = 0;
+
+      for (let i=0; i<q.length; i++){
+        const item = q[i];
+        try{
+          await window.FGAPI.public.pushLiveLocation(item.nik, item.loc);
+          sent++;
+          if(sent >= limit){
+            remaining.push(...q.slice(i+1));
+            break;
+          }
+        }catch(e){
+          remaining.push(...q.slice(i));
+          break;
+        }
+      }
+      this._writeLiveLocQueue(remaining);
+    }catch{}
   }
 
   // ===============================
@@ -35,7 +100,6 @@ class Utils {
   // ===============================
   // Geofence helpers
   // ===============================
-  // Hitung jarak antara dua titik koordinat (Haversine formula)
   calculateDistance(lat1, lon1, lat2, lon2) {
     const R = 6371e3; // meter
     const φ1 = (Number(lat1) || 0) * Math.PI / 180;
@@ -52,7 +116,6 @@ class Utils {
     return R * c;
   }
 
-  // Dapatkan lokasi pengguna saat ini (fallback low -> high accuracy)
   async getCurrentLocation() {
     const getPos = (opts) => new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
@@ -70,7 +133,6 @@ class Utils {
       );
     });
 
-    // 1) Coba cepat dulu
     try {
       return await getPos({
         enableHighAccuracy: false,
@@ -78,7 +140,6 @@ class Utils {
         maximumAge: 60000
       });
     } catch (_) {
-      // 2) Kalau gagal, coba High Accuracy
       return await getPos({
         enableHighAccuracy: true,
         timeout: 20000,
@@ -87,14 +148,11 @@ class Utils {
     }
   }
 
-  // Cek apakah user berada dalam radius lokasi event
   async checkLocation() {
     const cfg = this.getConfig();
 
-    // geofence off
     if (!cfg?.security?.enableGeofencing) return true;
 
-    // debug: anggap true
     if (cfg?.security?.debugMode) {
       console.log('[DEBUG] Geofencing check: simulated TRUE');
       return true;
@@ -105,7 +163,6 @@ class Utils {
         ? cfg.getEventLocation()
         : { lat: NaN, lng: NaN, radius: 0, name: '', address: '' };
 
-      // kalau config invalid, jangan blok user (fallback aman)
       if (!Number.isFinite(location.lat) || !Number.isFinite(location.lng) || !Number.isFinite(location.radius)) {
         console.warn('Geofence config invalid:', location);
         return true;
@@ -126,7 +183,6 @@ class Utils {
       return inRadius;
     } catch (error) {
       console.error('Error in checkLocation:', error);
-      // jangan gunakan "utils" global di dalam class (pakai this)
       this.showNotification('Lokasi gagal dideteksi. Aktifkan GPS & izin lokasi, lalu refresh.', 'warning');
       return false;
     }
@@ -146,51 +202,70 @@ class Utils {
       return;
     }
 
-    // stop dulu jika sudah pernah start
     this.stopLiveLocationTracking();
 
     const sendMinMs = Number(opts.sendMinMs || 30000);
     const hiAcc = (opts.highAccuracy !== undefined) ? !!opts.highAccuracy : true;
+    const movedMinMs = Number(opts.movedMinMs || 3000);
 
     this._liveLoc = {
       nik: String(nik),
       watchId: null,
       lastSentAt: 0,
-      lastPayloadKey: ''
+      lastPayloadKey: '',
+      sampleTimer: null,
+      onVis: null
     };
 
     const shouldSend = (pos) => {
       const now = Date.now();
-      if (now - this._liveLoc.lastSentAt < sendMinMs) return false;
 
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
       const acc = pos.coords.accuracy || 0;
 
       const key = `${lat.toFixed(6)}|${lng.toFixed(6)}|${Math.round(acc)}`;
-      if (key === this._liveLoc.lastPayloadKey && (now - this._liveLoc.lastSentAt) < (sendMinMs * 2)) {
-        return false;
+
+      if (key !== this._liveLoc.lastPayloadKey) {
+        if (now - this._liveLoc.lastSentAt >= movedMinMs) {
+          this._liveLoc.lastPayloadKey = key;
+          return true;
+        }
       }
-      this._liveLoc.lastPayloadKey = key;
-      return true;
+
+      if (now - this._liveLoc.lastSentAt >= sendMinMs) {
+        this._liveLoc.lastPayloadKey = key;
+        return true;
+      }
+
+      return false;
     };
 
-    const send = async (pos) => {
+    const send = async (pos, reason='') => {
+      if (!window.FGAPI?.public?.pushLiveLocation) return;
+
+      const loc = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy || null,
+        speed: pos.coords.speed || null,
+        heading: pos.coords.heading || null,
+        ts: new Date(pos.timestamp || Date.now()).toISOString(),
+        reason: reason || null
+      };
+
+      if (navigator.onLine === false) {
+        this.queueLiveLocation(this._liveLoc.nik, loc);
+        return;
+      }
+
+      try { await this.flushLiveLocationQueue(50); } catch {}
+
       try {
-        if (!window.FGAPI?.public?.pushLiveLocation) return;
-
-        const loc = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy || null,
-          speed: pos.coords.speed || null,
-          heading: pos.coords.heading || null,
-          ts: new Date(pos.timestamp || Date.now()).toISOString()
-        };
-
         await window.FGAPI.public.pushLiveLocation(this._liveLoc.nik, loc);
         this._liveLoc.lastSentAt = Date.now();
       } catch (e) {
+        this.queueLiveLocation(this._liveLoc.nik, loc);
         console.warn('pushLiveLocation error:', e?.message || e);
       }
     };
@@ -210,6 +285,27 @@ class Utils {
       timeout: 20000
     });
 
+    // Periodic sampling (lebih stabil di mobile saat watchPosition ditunda OS)
+    const sampleEveryMs = Number(opts.sampleEveryMs || (10*60*1000)); // default 10 menit
+    const sampleOnce = () => {
+      try{
+        navigator.geolocation.getCurrentPosition(
+          (p)=>{ if(this._liveLoc && shouldSend(p)) send(p,'sample'); },
+          (_e)=>{},
+          { enableHighAccuracy: hiAcc, maximumAge: 0, timeout: 20000 }
+        );
+      }catch{}
+    };
+
+    try{ sampleOnce(); }catch{}
+    this._liveLoc.sampleTimer = setInterval(sampleOnce, sampleEveryMs);
+
+    const onVis = () => {
+      if (document.visibilityState === 'visible') sampleOnce();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    this._liveLoc.onVis = onVis;
+
     window.addEventListener('beforeunload', () => this.stopLiveLocationTracking(), { once: true });
   }
 
@@ -219,6 +315,15 @@ class Utils {
         navigator.geolocation.clearWatch(this._liveLoc.watchId);
       }
     } catch {}
+
+    try{
+      if (this._liveLoc?.sampleTimer) clearInterval(this._liveLoc.sampleTimer);
+    }catch{}
+
+    try{
+      if (this._liveLoc?.onVis) document.removeEventListener('visibilitychange', this._liveLoc.onVis);
+    }catch{}
+
     this._liveLoc = null;
   }
 
@@ -362,86 +467,3 @@ class Utils {
     return '';
   }
 }
-
-// Inisialisasi utils
-const utils = new Utils();
-window.utils = window.utils || utils;
-
-// ✅ auto start tracking setelah user login (fg:user-ready dipicu oleh auth.js)
-document.addEventListener('fg:user-ready', (ev) => {
-  const nik = ev?.detail?.nik || window.FG_USER?.nik || localStorage.getItem('fg_nik') || '';
-  if (!nik) return;
-
-  const cfg = (utils.getConfig ? utils.getConfig() : (window.AppConfig || {}));
-  utils.startLiveLocationTracking(nik, {
-    sendMinMs: cfg?.app?.locationLiveSendMinMs || 30000,
-    highAccuracy: true
-  });
-});
-
-// Update clock
-function updateClock() {
-  const clockElement = document.getElementById('clock');
-  if (!clockElement) return;
-
-  const now = new Date();
-  const timeString = now.toLocaleTimeString('id-ID', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    timeZone: 'Asia/Jakarta'
-  });
-  clockElement.textContent = timeString;
-
-  // Update tanggal acara jika ada di header
-  const eventDateElement = document.getElementById('event-date');
-  if (eventDateElement) {
-    const cfg = window.AppConfig || {};
-    const eventDate = (typeof cfg.getEventDate === 'function') ? cfg.getEventDate() : new Date();
-    const dateString = eventDate.toLocaleDateString('id-ID', {
-      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-    });
-    eventDateElement.textContent = dateString;
-  }
-}
-
-// Update location status
-async function updateLocationStatus() {
-  const statusElement = document.getElementById('location-status');
-  const displayStatusElement = document.getElementById('display-location-status');
-  if (!statusElement || !displayStatusElement) return;
-
-  try {
-    const inLocation = await utils.checkLocation();
-    const cfg = window.AppConfig || {};
-    const loc = (typeof cfg.getEventLocation === 'function') ? cfg.getEventLocation() : null;
-    const locationName = loc?.name || 'Lokasi Acara';
-
-    if (inLocation) {
-      statusElement.innerHTML = `<i class="fas fa-map-marker-alt text-green-500"></i><span class="text-gray-600">Dalam radius ${locationName}</span>`;
-      displayStatusElement.textContent = `Dalam radius ${locationName}`;
-      displayStatusElement.className = 'font-semibold text-green-600';
-    } else {
-      statusElement.innerHTML = `<i class="fas fa-map-marker-alt text-red-500"></i><span class="text-gray-600">Di luar radius ${locationName}</span>`;
-      displayStatusElement.textContent = `Di luar radius ${locationName}`;
-      displayStatusElement.className = 'font-semibold text-red-600';
-    }
-  } catch (error) {
-    console.error('Error checking location:', error);
-    statusElement.innerHTML = `<i class="fas fa-map-marker-alt text-yellow-500"></i><span class="text-gray-600">Status lokasi tidak tersedia</span>`;
-    displayStatusElement.textContent = 'Status lokasi tidak tersedia';
-    displayStatusElement.className = 'font-semibold text-yellow-600';
-  }
-}
-
-// Initialize clock and location
-setInterval(updateClock, 1000);
-updateClock();
-
-// Update location status berdasarkan interval konfigurasi (dinamis dari AppConfig)
-(function initLocationInterval(){
-  const cfg = window.AppConfig || {};
-  const locationInterval = cfg?.app?.locationUpdateInterval || 30000;
-  setInterval(updateLocationStatus, locationInterval);
-  updateLocationStatus();
-})();

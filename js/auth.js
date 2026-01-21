@@ -17,6 +17,9 @@ class Auth {
         // ✅ Dedupe remote config (tidak dobel dengan branding.js)
         this.ensureConfigAndRefresh();
         this.listenConfigReady();
+
+        // ✅ Auto-login 24 jam untuk peserta yang SUDAH presensi sukses
+        setTimeout(()=>{ try{ this.tryAutoLoginFromRemember(); }catch{} }, 50);
     }
 
     // ✅ Tidak fetch sendiri lagi (branding.js yang fetch, FGConfig yang dedupe)
@@ -96,8 +99,56 @@ class Auth {
             if (e.key === 'Enter') this.checkNIK();
         });
         this.confirmAttendanceBtn.addEventListener('click', () => this.confirmAttendance());
-        this.enterAppBtn.addEventListener('click', () => this.enterApp());
-        this.logoutBtn.addEventListener('click', () => this.logout());
+        this.enterAppBtn.addEventListener('click', () => this.enterApp(true));
+        this.logoutBtn.addEventListener('click', () => this.logout(true));
+    }
+
+    // ===============================
+    // ✅ Button Spinner Helper (ringan)
+    // ===============================
+    _setBtnLoading(btn, on, label){
+        try{
+            if(!btn) return;
+
+            if(on){
+                // backup html terakhir (kalau countdown sudah ubah, tetap aman)
+                if(!btn.dataset._origHtml){
+                    btn.dataset._origHtml = btn.innerHTML;
+                }
+                if(btn.dataset._origDisabled == null){
+                    btn.dataset._origDisabled = btn.disabled ? '1' : '0';
+                }
+
+                const text = label || btn.dataset.loadingText || 'Memproses...';
+                btn.disabled = true;
+                btn.classList.add('is-loading');
+
+                btn.innerHTML = `
+                    <span class="btn-spinner mr-2" aria-hidden="true"></span>
+                    <span>${text}</span>
+                `;
+            }else{
+                const orig = btn.dataset._origHtml;
+                if(orig != null) btn.innerHTML = orig;
+
+                // balikin disabled seperti semula
+                const wasDisabled = btn.dataset._origDisabled === '1';
+                btn.disabled = wasDisabled;
+
+                btn.classList.remove('is-loading');
+                delete btn.dataset._origHtml;
+                delete btn.dataset._origDisabled;
+            }
+        }catch(e){}
+    }
+
+    async _withBtnSpinner(btn, fn, label){
+        this._setBtnLoading(btn, true, label);
+        try{
+            return await fn();
+        }finally{
+            this._setBtnLoading(btn, false);
+        }
     }
 
     // ===============================
@@ -286,67 +337,78 @@ class Auth {
 
 
     async checkNIK() {
-        const nik = this.nikInput.value.trim();
-        
-        // Validasi NIK menggunakan utils
-        const validation = this.utils.validateNIK(nik);
-        if (!validation.valid) {
-            this.showError('NIK tidak valid', validation.message);
-            return;
-        }
-        
-        // Cek apakah sudah absen (server)
-        try {
-            const st = await window.FGAPI.public.getAttendanceStatus(nik);
-            if (st && st.already === true) {
-                // Simpan user jika tersedia agar tombol "Masuk" tetap bisa tampil info user
-                if (st.participant) this.currentUser = st.participant;
-                this.showAlreadyAttended();
+        const btn = this.checkNikBtn;
+
+        // Pastikan countdown punya baseHtml agar icon tetap
+        try{
+            if(btn && !btn.dataset.baseHtml){
+                btn.dataset.baseHtml = btn.innerHTML;
+            }
+        }catch{}
+
+        await this._withBtnSpinner(btn, async () => {
+            const nik = this.nikInput.value.trim();
+
+            // Validasi NIK menggunakan utils
+            const validation = this.utils.validateNIK(nik);
+            if (!validation.valid) {
+                this.showError('NIK tidak valid', validation.message);
                 return;
             }
-        } catch (e) {
-            this.showError('Gagal memeriksa status absensi', String(e.message || e));
-            return;
-        }
-        
-        // Cek apakah dalam radius lokasi
-        const inLocation = await this.utils.checkLocation();
-        if (!inLocation) {
-            const locationName = window.AppConfig?.getEventLocation ? 
-                window.AppConfig.getEventLocation().name : 'lokasi acara';
-            this.showError('Tidak dapat melakukan absensi', `Anda berada di luar radius ${locationName}`);
-            return;
-        }
-        
-        // Cek apakah tanggal dan waktu acara
-        if (!this.utils.isEventDate()) {
-            this.showError('Tidak dapat melakukan absensi', 'Absensi hanya dapat dilakukan pada tanggal acara');
-            return;
-        }
-        
-        if (!this.utils.isGalaDinnerTime()) {
-            const eventTime = window.AppConfig?.event?.galaDinnerDate ? 
-                new Date(window.AppConfig.event.galaDinnerDate).toLocaleTimeString('id-ID', { 
-                    hour: '2-digit', 
-                    minute: '2-digit',
-                    timeZone: 'Asia/Jakarta' 
-                }) : '16:00';
-            this.showError('Tidak dapat melakukan absensi', `Absensi hanya dapat dilakukan mulai pukul ${eventTime} WIB`);
-            return;
-        }
-        
-        // Ambil data peserta dari server
-        try {
-            const participant = await window.FGAPI.public.getParticipantByNIK(nik);
-            if (!participant) {
-                this.showError('NIK tidak ditemukan', 'Pastikan NIK yang dimasukkan sudah benar');
+
+            // Cek apakah sudah absen (server)
+            try {
+                const st = await window.FGAPI.public.getAttendanceStatus(nik);
+                if (st && st.already === true) {
+                    if (st.participant) this.currentUser = st.participant;
+                    this.rememberUser24h(nik);
+                    this.showAlreadyAttended();
+                    return;
+                }
+            } catch (e) {
+                this.showError('Gagal memeriksa status absensi', String(e.message || e));
                 return;
             }
-            this.currentUser = participant;
-            this.showSuccess(participant);
-        } catch (e) {
-            this.showError('Gagal memuat data peserta', String(e.message || e));
-        }
+
+            // Cek apakah dalam radius lokasi
+            const inLocation = await this.utils.checkLocation();
+            if (!inLocation) {
+                const locationName = window.AppConfig?.getEventLocation ?
+                    window.AppConfig.getEventLocation().name : 'lokasi acara';
+                this.showError('Tidak dapat melakukan absensi', `Anda berada di luar radius ${locationName}`);
+                return;
+            }
+
+            // Cek apakah tanggal dan waktu acara
+            if (!this.utils.isEventDate()) {
+                this.showError('Tidak dapat melakukan absensi', 'Absensi hanya dapat dilakukan pada tanggal acara');
+                return;
+            }
+
+            if (!this.utils.isGalaDinnerTime()) {
+                const eventTime = window.AppConfig?.event?.galaDinnerDate ?
+                    new Date(window.AppConfig.event.galaDinnerDate).toLocaleTimeString('id-ID', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        timeZone: 'Asia/Jakarta'
+                    }) : '16:00';
+                this.showError('Tidak dapat melakukan absensi', `Absensi hanya dapat dilakukan mulai pukul ${eventTime} WIB`);
+                return;
+            }
+
+            // Ambil data peserta dari server
+            try {
+                const participant = await window.FGAPI.public.getParticipantByNIK(nik);
+                if (!participant) {
+                    this.showError('NIK tidak ditemukan', 'Pastikan NIK yang dimasukkan sudah benar');
+                    return;
+                }
+                this.currentUser = participant;
+                this.showSuccess(participant);
+            } catch (e) {
+                this.showError('Gagal memuat data peserta', String(e.message || e));
+            }
+        }, (btn?.dataset?.loadingText || 'Memverifikasi...'));
     }
 
     showError(message, detail) {
@@ -440,63 +502,88 @@ class Auth {
     async confirmAttendance() {
         if (!this.currentUser) return;
 
-        // ✅ gunakan family list yang sudah dipastikan ada peserta utama
-        const familyForUi = this.ensureMainInFamily(this.currentUser);
+        const btn = this.confirmAttendanceBtn;
 
-        const checkboxes = document.querySelectorAll('#family-list input[type="checkbox"]');
-        const attendedMembers = [];
+        await this._withBtnSpinner(btn, async () => {
+            // ✅ gunakan family list yang sudah dipastikan ada peserta utama
+            const familyForUi = this.ensureMainInFamily(this.currentUser);
 
-        checkboxes.forEach((checkbox, index) => {
-            if (checkbox.checked) attendedMembers.push(familyForUi[index]);
-        });
+            const checkboxes = document.querySelectorAll('#family-list input[type="checkbox"]');
+            const attendedMembers = [];
 
-        if (attendedMembers.length === 0) {
-            this.utils.showNotification('Pilih minimal 1 orang hadir', 'warning');
-            return;
-        }
-        
-        // Simpan ke server
-        try {
-            await window.FGAPI.public.submitAttendance(this.currentUser.nik, attendedMembers);
-            this.attended = true;
-            this.utils.showNotification('Kehadiran berhasil dikonfirmasi', 'success');
-            this.showAlreadyAttended();
-        } catch (e) {
-            this.utils.showNotification(String(e.message || e), 'error');
-        }
+            checkboxes.forEach((checkbox, index) => {
+                if (checkbox.checked) attendedMembers.push(familyForUi[index]);
+            });
+
+            if (attendedMembers.length === 0) {
+                this.utils.showNotification('Pilih minimal 1 orang hadir', 'warning');
+                return;
+            }
+
+            // Simpan ke server
+            try {
+                await window.FGAPI.public.submitAttendance(this.currentUser.nik, attendedMembers);
+                this.attended = true;
+
+                // ✅ Remember 24 jam setelah presensi sukses
+                this.rememberUser24h(this.currentUser.nik);
+
+                this.utils.showNotification('Kehadiran berhasil dikonfirmasi', 'success');
+                this.showAlreadyAttended();
+            } catch (e) {
+                this.utils.showNotification(String(e.message || e), 'error');
+            }
+        }, (btn?.dataset?.loadingText || 'Menyimpan...'));
     }
 
     // Status absensi sekarang dicek via server (lihat checkNIK)
     checkIfAlreadyAttended(nik) { return false; }
 
-    enterApp() {
+    async enterApp(useSpinner=false) {
         if (!this.currentUser) return;
 
-        // ✅ Simpan sesi
-        sessionStorage.setItem('currentUser', JSON.stringify(this.currentUser));
+        const run = async () => {
+            // ===== isi enterApp Anda YANG LAMA, tempel di sini tanpa diubah =====
+            // (mulai dari sessionStorage.setItem... sampai showNotification)
+            sessionStorage.setItem('currentUser', JSON.stringify(this.currentUser));
 
-        // ✅ SINKRON GLOBAL (INI KUNCI)
-        window.FG_USER = {
-            nik: this.currentUser.nik,
-            name: this.currentUser.name
+            window.FG_USER = {
+                nik: this.currentUser.nik,
+                name: this.currentUser.name
+            };
+
+            localStorage.setItem('fg_nik', this.currentUser.nik);
+
+            this.authSection.classList.add('hidden');
+            this.appSection.classList.remove('hidden');
+
+            this.updateUserInfo();
+            this.updateEventInfo();
+
+            document.dispatchEvent(
+                new CustomEvent('fg:user-ready', { detail: window.FG_USER })
+            );
+
+            try{
+                const cfg = window.AppConfig || {};
+                const ll = cfg.liveLocation || {};
+                this.utils.startLiveLocationTracking(this.currentUser.nik, {
+                    enable: ll.enable !== false,
+                    hiAccuracy: ll.hiAccuracy !== false,
+                    sendMinMs: ll.sendMinMs || 30000,
+                    sampleEveryMs: ll.sampleEveryMs || (10*60*1000),
+                    movedMinMs: ll.movedMinMs || 3000
+                });
+            }catch{}
+
+            this.utils.showNotification(`Selamat datang, ${this.currentUser.name}`, 'success');
         };
 
-        // OPTIONAL: simpan juga ke localStorage (agar tahan reload)
-        localStorage.setItem('fg_nik', this.currentUser.nik);
-
-        // UI
-        this.authSection.classList.add('hidden');
-        this.appSection.classList.remove('hidden');
-
-        this.updateUserInfo();
-        this.updateEventInfo();
-
-        // 🔔 BERITAHU MODUL LAIN
-        document.dispatchEvent(
-            new CustomEvent('fg:user-ready', { detail: window.FG_USER })
-        );
-
-        this.utils.showNotification(`Selamat datang, ${this.currentUser.name}`, 'success');
+        if(useSpinner && this.enterAppBtn){
+            await this._withBtnSpinner(this.enterAppBtn, run, (this.enterAppBtn.dataset.loadingText || 'Membuka...'));
+        }else{
+            await run();
+        }
     }
 
     updateUserInfo() {
@@ -542,26 +629,86 @@ class Auth {
         }
     }
 
-    logout() {
-        this.currentUser = null;
-        this.attended = false;
-        
-        // Clear session
-        sessionStorage.removeItem('currentUser');
-        
-        // Reset form
-        this.nikInput.value = '';
-        this.authError.classList.add('hidden');
-        this.authSuccess.classList.add('hidden');
-        this.alreadyAttended.classList.add('hidden');
-        
-        // Tampilkan form absensi
-        this.appSection.classList.add('hidden');
-        this.authSection.classList.remove('hidden');
+    
 
-        try { this.utils.stopLiveLocationTracking(); } catch {}
-        
-        this.utils.showNotification('Anda telah keluar dari aplikasi', 'info');
+// ===============================
+// ✅ Remember-me 24 jam (hanya jika sudah presensi sukses)
+// ===============================
+rememberUser24h(nik){
+    try{
+        if(!nik) return;
+        const payload = { nik: String(nik), ts: Date.now(), ttlMs: 24*60*60*1000 };
+        localStorage.setItem('fg_remember_v1', JSON.stringify(payload));
+    }catch{}
+}
+
+clearRemember(){
+    try{ localStorage.removeItem('fg_remember_v1'); }catch{}
+}
+
+async tryAutoLoginFromRemember(){
+    try{
+        const raw = localStorage.getItem('fg_remember_v1');
+        if(!raw) return;
+        const obj = JSON.parse(raw);
+        if(!obj || !obj.nik || !obj.ts) return;
+
+        const ttl = Number(obj.ttlMs || (24*60*60*1000));
+        if(Date.now() - Number(obj.ts) > ttl){
+            this.clearRemember();
+            return;
+        }
+
+        const nik = String(obj.nik).trim();
+        if(!nik) return;
+
+        // Pastikan status di server memang sudah presensi
+        const st = await window.FGAPI.public.getAttendanceStatus(nik);
+        if(!(st && st.already === true && st.participant)){
+            // belum presensi / tidak valid => jangan auto login
+            this.clearRemember();
+            return;
+        }
+
+        this.currentUser = st.participant;
+        this.attended = true;
+
+        // langsung masuk aplikasi tanpa input ulang NIK
+        this.enterApp();
+
+        this.utils.showNotification('Login otomatis aktif (24 jam)', 'info');
+    }catch(e){
+        // no-op
+    }
+}
+
+    async logout(useSpinner=false) {
+        const run = async () => {
+            this.currentUser = null;
+            this.attended = false;
+
+            sessionStorage.removeItem('currentUser');
+            try{ localStorage.removeItem('fg_nik'); }catch{}
+            this.clearRemember();
+
+            this.nikInput.value = '';
+            this.authError.classList.add('hidden');
+            this.authSuccess.classList.add('hidden');
+            this.alreadyAttended.classList.add('hidden');
+
+            this.appSection.classList.add('hidden');
+            this.authSection.classList.remove('hidden');
+
+            try { this.utils.stopLiveLocationTracking(); } catch {}
+
+            this.utils.showNotification('Anda telah keluar dari aplikasi', 'info');
+        };
+
+        if(useSpinner && this.logoutBtn){
+            await this._withBtnSpinner(this.logoutBtn, run, (this.logoutBtn.dataset.loadingText || 'Keluar...'));
+        }else{
+            await run();
+        }
     }
 
     loadAttendanceStatus() {
