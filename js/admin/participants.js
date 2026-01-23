@@ -3,6 +3,8 @@
 */
 (function(){
   const FGAdmin = window.FGAdmin = window.FGAdmin || {};
+  const utils = window.utils || (window.utils = new Utils());
+
   const { $, $$, htmlEsc, renderTable, getRows, openModal, familyRowTemplate, collectFamily, setFamilyFromArray, bindFamilyRowActions } = FGAdmin.dom;
 
 async function loadParticipants(){
@@ -14,13 +16,9 @@ box.innerHTML = `
   <div class="flex items-center justify-between gap-3 mb-4">
     <div>
       <h3 class="text-xl font-bold text-gray-800">Peserta</h3>
-      <p class="text-gray-600 text-sm">
-        Nama peserta utama otomatis dari data NIK (kolom <b>Nama</b>).
-        Di daftar keluarga hanya isi anggota keluarga (Istri/Suami/Anak/dll) — <b>jangan isi nama peserta utama</b>.
-      </p>
     </div>
     <button id="p-add" class="bg-gradient-to-r from-blue-600 to-teal-500 text-white px-4 py-2 rounded-xl">
-      <i class="fas fa-plus mr-2"></i>Tambah Peserta
+      <i class="fas fa-plus mr-2"></i>Peserta
     </button>
   </div>
 `;
@@ -61,7 +59,6 @@ function openParticipantForm(cur){
         <div>
           <label class="block text-sm font-semibold text-gray-700 mb-1">Nama Peserta Utama</label>
           <input id="p_name" class="w-full p-3 border rounded-xl" placeholder="Nama sesuai NIK" />
-          <div class="text-xs text-gray-500 mt-1">Nama ini otomatis menjadi peserta utama (tidak perlu ditulis di keluarga).</div>
         </div>
 
         <div>
@@ -76,7 +73,7 @@ function openParticipantForm(cur){
         <div class="md:col-span-2">
           <label class="inline-flex items-center gap-2 p-3 border rounded-xl bg-gray-50 cursor-pointer">
             <input id="p_is_staff" type="checkbox" class="w-4 h-4" />
-            <span class="font-semibold text-gray-800">Termasuk STAFF (eligible untuk undian doorprize)</span>
+            <span class="font-semibold text-gray-800">STAFF (untuk doorprize)</span>
           </label>
         </div>
       </div>
@@ -85,7 +82,6 @@ function openParticipantForm(cur){
         <div class="flex items-center justify-between gap-3 mb-3">
           <div>
             <div class="font-bold text-gray-800">Daftar Keluarga</div>
-            <div class="text-sm text-gray-600">Isi anggota keluarga saja. Contoh: <b>Sari Dewi (Istri)</b>, <b>Rizky (Anak)</b>.</div>
           </div>
           <button id="fam-add" class="px-4 py-2 rounded-xl bg-white border hover:bg-gray-50">
             <i class="fas fa-plus mr-2"></i>Tambah
@@ -95,7 +91,6 @@ function openParticipantForm(cur){
         <div id="fam-wrap" class="space-y-2"></div>
 
         <div class="mt-3 text-xs text-gray-600">
-          Tips: untuk undangan/absensi, peserta utama tetap dihitung walaupun tidak ada di list keluarga.
         </div>
       </div>
     `,

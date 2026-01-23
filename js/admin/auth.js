@@ -3,6 +3,9 @@
 */
 (function(){
   const FGAdmin = window.FGAdmin = window.FGAdmin || {};
+  // Ensure global utils instance available in this module
+  const utils = window.utils || (window.utils = new Utils());
+
   const { $ } = FGAdmin.dom;
 
 function setBusy(on){

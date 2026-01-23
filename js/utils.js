@@ -21,6 +21,17 @@ class Utils {
     return window.AppConfig || {};
   }
 
+  // Escape HTML untuk mencegah XSS saat render string ke innerHTML
+  htmlEsc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (m) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    }[m]));
+  }
+
   // ===============================
   // Live Location Queue (offline-first)
   // ===============================
@@ -353,24 +364,85 @@ class Utils {
   // Notifications
   // ===============================
   showNotification(message, type = 'info') {
-    const notification = document.createElement('div');
-    notification.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 animate-fade-in ${this.getNotificationColor(type)}`;
-    notification.innerHTML = `
-      <div class="flex items-center">
-        <i class="fas ${this.getNotificationIcon(type)} mr-3"></i>
-        <div><p class="font-medium">${message}</p></div>
-        <button class="ml-4 text-gray-500 hover:text-gray-700" onclick="this.parentElement.parentElement.remove()">
-          <i class="fas fa-times"></i>
+    // Modern toast notification (Tailwind-friendly)
+    const msg = String(message ?? '').trim();
+    if (!msg) return;
+
+    // Create (or reuse) stack container
+    let stack = document.getElementById('fg-toast-stack');
+    if (!stack) {
+      stack = document.createElement('div');
+      stack.id = 'fg-toast-stack';
+      stack.className = 'fixed top-4 right-4 z-[99999] flex flex-col gap-3 max-w-[92vw] sm:max-w-sm';
+      document.body.appendChild(stack);
+    }
+
+    // Theme
+    const theme = {
+      success: { ring: 'ring-1 ring-emerald-200', bg: 'bg-white/90', bar: 'bg-emerald-500', icon: 'fa-circle-check', ic: 'text-emerald-600' },
+      warning: { ring: 'ring-1 ring-amber-200', bg: 'bg-white/90', bar: 'bg-amber-500', icon: 'fa-triangle-exclamation', ic: 'text-amber-600' },
+      error:   { ring: 'ring-1 ring-rose-200', bg: 'bg-white/90', bar: 'bg-rose-500', icon: 'fa-circle-xmark', ic: 'text-rose-600' },
+      info:    { ring: 'ring-1 ring-sky-200', bg: 'bg-white/90', bar: 'bg-sky-500', icon: 'fa-circle-info', ic: 'text-sky-600' },
+    }[type] || { ring: 'ring-1 ring-gray-200', bg: 'bg-white/90', bar: 'bg-gray-500', icon: 'fa-circle-info', ic: 'text-gray-600' };
+
+    const toast = document.createElement('div');
+    toast.className = [
+      'relative overflow-hidden rounded-2xl shadow-xl backdrop-blur',
+      theme.bg, theme.ring,
+      'translate-y-2 opacity-0 transition-all duration-200 ease-out'
+    ].join(' ');
+
+    toast.innerHTML = `
+      <div class="flex items-start gap-3 p-4">
+        <div class="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl bg-gray-50">
+          <i class="fas ${theme.icon} ${theme.ic}"></i>
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-semibold text-gray-900">${this.htmlEsc(msg)}</p>
+        </div>
+        <button type="button" class="ml-2 text-gray-400 hover:text-gray-700 transition" aria-label="Tutup">
+          <i class="fas fa-xmark"></i>
         </button>
       </div>
+      <div class="h-1 w-full bg-gray-100">
+        <div class="fg-toast-bar h-1 ${theme.bar} w-full origin-left scale-x-100"></div>
+      </div>
     `;
-    document.body.appendChild(notification);
 
-    const cfg = this.getConfig();
-    const timeout = cfg?.app?.notificationTimeout || 5000;
-    setTimeout(() => {
-      if (notification.parentElement) notification.remove();
-    }, timeout);
+    const btn = toast.querySelector('button');
+    const remove = () => {
+      toast.classList.remove('translate-y-0', 'opacity-100');
+      toast.classList.add('translate-y-2', 'opacity-0');
+      setTimeout(() => { try { toast.remove(); } catch {} }, 220);
+    };
+    btn.addEventListener('click', remove);
+
+    // Add to top
+    stack.prepend(toast);
+
+    // Animate in
+    requestAnimationFrame(() => {
+      toast.classList.remove('translate-y-2', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+    });
+
+    // Auto-dismiss with progress bar
+    const ttl = (type === 'error') ? 6000 : (type === 'warning') ? 5000 : 3800;
+    const bar = toast.querySelector('.fg-toast-bar');
+    if (bar) {
+      bar.style.transition = `transform ${ttl}ms linear`;
+      requestAnimationFrame(() => { bar.style.transform = 'scaleX(0)'; });
+    }
+    setTimeout(remove, ttl);
+
+    // Cap stack size
+    const MAX = 4;
+    const items = Array.from(stack.children);
+    if (items.length > MAX) {
+      for (let i = MAX; i < items.length; i++) {
+        try { items[i].remove(); } catch {}
+      }
+    }
   }
 
   getNotificationColor(type) {

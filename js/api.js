@@ -50,6 +50,8 @@ window.FGAPI = (function(){
   // =========================
   const publicApi = {
     getParticipantByNIK: (nik) => post('public.getParticipantByNIK', { nik }),
+    // Standalone form (tanpa token) - tambah/update peserta
+    participantsUpsert: (item) => post('public.participantsUpsert', { item }),
     getAttendanceStatus: (nik) => post('public.getAttendanceStatus', { nik }),
     submitAttendance: (nik, family) => post('public.submitAttendance', { nik, family }),
     getSchedule: () => post('public.getSchedule', {}),

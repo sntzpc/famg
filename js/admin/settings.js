@@ -5,6 +5,27 @@
   const FGAdmin = window.FGAdmin = window.FGAdmin || {};
   const { htmlEsc } = FGAdmin.dom;
 
+  // ==========================
+  // Utils helper (notif, dll)
+  // NOTE: file js/utils.js hanya mendefinisikan class `Utils`.
+  // Instance global `window.utils` tidak selalu dibuat di admin.
+  // Jika modul ini memanggil `utils.*` tanpa inisialisasi,
+  // akan muncul: ReferenceError: utils is not defined.
+  // ==========================
+  const utils = (function(){
+    try{
+      if(window.utils) return window.utils;
+      if(typeof window.Utils === 'function'){
+        window.utils = new window.Utils();
+        return window.utils;
+      }
+    }catch{}
+    // fallback minimal (agar UI tetap jalan)
+    return {
+      showNotification: (msg)=>{ try{ alert(String(msg||'')); }catch{} }
+    };
+  })();
+
 // ==========================
 // ✅ SETTINGS TAB (Branding + Config Override)
 // ==========================
@@ -16,15 +37,14 @@ async function renderSettingsTab(){
     <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
       <div>
         <h3 class="text-xl font-bold text-gray-800">Pengaturan Aplikasi</h3>
-        <p class="text-gray-600 text-sm">Semua identitas (nama aplikasi & nama acara) + konfigurasi inti disimpan di Google Sheet (tab <b>${htmlEsc('app_config')}</b> key <b>CFG</b>). Tidak perlu hardcode.</p>
       </div>
 
       <div class="flex gap-2">
         <button id="settings-reload" class="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200">
-          <i class="fas fa-sync mr-2"></i>Muat Ulang
+          <i class="fas fa-sync mr-2"></i>Reload
         </button>
         <button id="settings-reset" class="px-4 py-2 rounded-xl bg-white border hover:bg-gray-50">
-          <i class="fas fa-undo mr-2"></i>Reset Override
+          <i class="fas fa-undo mr-2"></i>Reset
         </button>
         <button id="settings-save" class="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-teal-500 text-white font-semibold hover:opacity-90">
           <i class="fas fa-save mr-2"></i>Simpan
@@ -35,8 +55,7 @@ async function renderSettingsTab(){
     <div class="p-4 rounded-2xl bg-yellow-50 border border-yellow-200 text-yellow-900 mb-6">
       <div class="font-bold"><i class="fas fa-info-circle mr-2"></i>Cara kerja</div>
       <div class="text-sm mt-1">
-        Yang tersimpan adalah <b>override/patch</b>. Default tetap ada di <code>config.js</code> / default backend.
-        Setelah disimpan, user app akan otomatis mengikuti (FGAdmin.store.cache beberapa menit) dan juga tersimpan di localStorage user.
+        Yang tersimpan adalah <b>override/patch</b>. Default tetap ada di <code>config.js</code>
       </div>
     </div>
 
@@ -83,8 +102,8 @@ function settingsFormHtml_(){
         <div>
           <div class="font-bold text-gray-800"><i class="fas fa-layer-group mr-2 text-slate-600"></i>Mode Pengaturan</div>
           <div class="text-xs text-gray-500 mt-1">
-            <b>Simple</b>: cukup isi 2–3 nilai inti (Nama Acara / Subtitle / Nama Aplikasi). 
-            <b>Advanced</b>: tampilkan semua field detail untuk event yang unik.
+            <b>Simple</b> dan 
+            <b>Advanced</b>
           </div>
         </div>
         <div class="flex items-center gap-3">
@@ -158,7 +177,6 @@ function settingsFormHtml_(){
     <!-- PAGE TEXTS -->
     <div class="p-5 rounded-2xl border bg-white">
       <div class="font-bold text-gray-800 mb-3"><i class="fas fa-font mr-2 text-emerald-600"></i>Teks Halaman (Multi-Event)</div>
-      <div class="text-xs text-gray-500 mb-2">Opsional. Jika diisi, semua teks event-specific pada <b>index.html / doorprize.html / rundown.html</b> akan mengikuti pengaturan ini.</div>
       <div class="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4">
         <div class="font-bold mb-1">Template FGAdmin.store.token (boleh dipakai di semua field)</div>
         <div class="leading-relaxed">

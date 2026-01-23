@@ -3,6 +3,9 @@
 */
 (function(){
   const FGAdmin = window.FGAdmin = window.FGAdmin || {};
+  // Ensure global utils instance available in this module
+  const utils = window.utils || (window.utils = new Utils());
+
   const { $, $$, htmlEsc, getRows, openModal, readFileAsDataURL, dataUrlToBase64 } = FGAdmin.dom;
   const { driveIdFromAny, driveImgSrc, bindImgFallback, loadPrizeImgToEl } = FGAdmin.drive;
 
@@ -15,9 +18,6 @@ box.innerHTML = `
   <div class="flex items-center justify-between gap-3 mb-4">
     <div>
       <h3 class="text-xl font-bold text-gray-800">Doorprize</h3>
-      <p class="text-gray-600 text-sm">
-        Bisa upload gambar dari HP/Laptop. File akan disimpan ke Google Drive folder yang sudah Anda siapkan.
-      </p>
     </div>
     <button id="d-add" class="bg-gradient-to-r from-purple-600 to-pink-500 text-white px-4 py-2 rounded-xl">
       <i class="fas fa-plus mr-2"></i>Tambah Doorprize

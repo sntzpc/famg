@@ -31,7 +31,6 @@ async function renderLiveTab(){
     <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
       <div>
         <h3 class="text-xl font-bold text-gray-800">Live Map Peserta</h3>
-        <p class="text-gray-600 text-sm">Memantau lokasi peserta selama aplikasi peserta masih terbuka.</p>
       </div>
 
       <div class="flex items-center gap-2">

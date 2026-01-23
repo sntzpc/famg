@@ -3,6 +3,9 @@
 */
 (function(){
   const FGAdmin = window.FGAdmin = window.FGAdmin || {};
+  // Ensure global utils instance available in this module
+  const utils = window.utils || (window.utils = new Utils());
+
   const { $, $$, htmlEsc, renderTable, getRows, openModal, getVal, getNum } = FGAdmin.dom;
 
 async function loadEvents(){
@@ -15,9 +18,6 @@ box.innerHTML = `
   <div class="flex items-start justify-between gap-3 mb-4 flex-wrap">
     <div class="min-w-0">
       <h3 class="text-xl font-bold text-gray-800">Rundown</h3>
-      <p class="text-gray-600 text-sm">
-        Kelola rundown lengkap. Admin dapat memilih 1 event aktif untuk ditampilkan di User App.
-      </p>
       <p class="text-xs text-gray-500 mt-1">
         Import Excel: kolom minimal <b>day</b>, <b>time</b>, <b>title</b>. Kolom lain opsional.
       </p>
@@ -28,7 +28,7 @@ box.innerHTML = `
        href="${RUNDOWN_TEMPLATE_URL}"
        download="Template_Rundown.xlsx"
        class="bg-white border px-4 py-2 rounded-xl hover:bg-gray-50 inline-flex items-center">
-      <i class="fas fa-download mr-2 text-blue-700"></i>Download Template
+      <i class="fas fa-download mr-2 text-blue-700"></i>Template
     </a>
     <div class="flex gap-2">
       <button id="e-import" class="bg-white border px-4 py-2 rounded-xl hover:bg-gray-50">

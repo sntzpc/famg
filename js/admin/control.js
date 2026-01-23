@@ -3,6 +3,9 @@
 */
 (function(){
   const FGAdmin = window.FGAdmin = window.FGAdmin || {};
+  // Ensure global utils instance available in this module
+  const utils = window.utils || (window.utils = new Utils());
+
   const { $ , htmlEsc } = FGAdmin.dom;
   const { openModal } = FGAdmin.dom;
 
@@ -22,10 +25,10 @@ async function renderControl(){
       <div class="text-sm text-gray-500">${htmlEsc(curId)}</div>
       <div class="mt-4 flex flex-wrap gap-3">
         <a href="doorprize.html" class="bg-gradient-to-r from-purple-600 to-pink-500 text-white px-4 py-2 rounded-xl">
-          <i class="fas fa-gift mr-2"></i>Operator Doorprize
+          <i class="fas fa-gift mr-2"></i>Doorprize
         </a>
         <a href="rundown.html" class="bg-gradient-to-r from-blue-600 to-teal-500 text-white px-4 py-2 rounded-xl">
-          <i class="fas fa-calendar mr-2"></i>Operator Rundown
+          <i class="fas fa-calendar mr-2"></i>Rundown
         </a>
       </div>
     </div>
@@ -35,19 +38,13 @@ async function renderControl(){
       <div class="flex items-start justify-between gap-3 flex-wrap">
         <div class="min-w-0">
           <div class="text-lg font-bold text-gray-800">Pengaturan Aplikasi</div>
-          <div class="text-sm text-gray-600">
-            Kelola konfigurasi event/app/security langsung dari Admin Panel (tanpa edit config.js).
-          </div>
-          <div class="text-xs text-gray-500 mt-1">
-            Perubahan disimpan di server & dicache di user app (cepat, tidak berat).
-          </div>
         </div>
         <div class="flex gap-2">
           <button id="cfg-open-settings" class="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-teal-500 text-white">
-            <i class="fas fa-sliders-h mr-2"></i>Buka Pengaturan
+            <i class="fas fa-sliders-h mr-2"></i>Pengaturan
           </button>
           <button id="cfg-reset" class="px-4 py-2 rounded-xl bg-white border hover:bg-gray-50">
-            <i class="fas fa-undo mr-2"></i>Reset Override
+            <i class="fas fa-undo mr-2"></i>Reset
           </button>
         </div>
       </div>

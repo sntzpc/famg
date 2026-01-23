@@ -3,6 +3,8 @@
 */
 (function(){
   const FGAdmin = window.FGAdmin = window.FGAdmin || {};
+  const utils = window.utils || (window.utils = new Utils());
+
   const { $, $$, htmlEsc, renderTable, getRows, openModal, getVal, getChecked } = FGAdmin.dom;
 
 async function loadUsers(){
@@ -14,7 +16,6 @@ box.innerHTML = `
   <div class="flex items-center justify-between gap-3 mb-4">
     <div>
       <h3 class="text-xl font-bold text-gray-800">User Panel</h3>
-      <p class="text-gray-600 text-sm">Kelola akun login untuk Admin/Operator.</p>
     </div>
     <button id="u-add" class="bg-gradient-to-r from-blue-600 to-teal-500 text-white px-4 py-2 rounded-xl">
       <i class="fas fa-plus mr-2"></i>Tambah

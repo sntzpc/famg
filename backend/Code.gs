@@ -71,6 +71,7 @@ function route_(action, p, token){
   switch(action){
     // ---- Public (tanpa token) ----
     case 'public.getParticipantByNIK': return public_getParticipantByNIK_(p);
+    case 'public.participantsUpsert': return public_participantsUpsert_(p);
     case 'public.getAttendanceStatus': return public_getAttendanceStatus_(p);
     case 'public.submitAttendance': return public_submitAttendance_(p);
     case 'public.getSchedule': return public_getSchedule_();
@@ -383,6 +384,48 @@ function public_getParticipantByNIK_(p){
     is_staff: bool_(r.is_staff),
     family: safeJson_(r.family_json, [])
   };
+}
+
+// ==========================
+// Public: tambah/update peserta (tanpa token)
+// Dipakai untuk form online standalone (tanpa password).
+// Keamanan: endpoint ini sengaja dibuka, namun dibatasi hanya upsert by NIK
+// dan validasi minimal agar tidak overwrite data menjadi kosong.
+// ==========================
+function public_participantsUpsert_(p){
+  const it = (p && p.item) ? p.item : {};
+  const nik = String(it.nik || '').trim();
+  const name = String(it.name || '').trim();
+  if(!nik) throw new Error('NIK required');
+  if(!name) throw new Error('Name required');
+
+  // Ambil existing untuk mencegah overwrite field penting dengan kosong
+  const rows = getAll_(SH.participants);
+  const existing = rows.find(r => String(r.nik) === nik) || null;
+
+  const regionIn = String(it.region ?? '').trim();
+  const unitIn   = String(it.unit ?? '').trim();
+
+  const obj = {
+    nik: nik,
+    name: name,
+    region: regionIn || (existing ? String(existing.region||existing.position||'') : ''),
+    unit: unitIn || (existing ? String(existing.unit||existing.department||'') : ''),
+    is_staff: bool_(it.is_staff) ? 'TRUE' : (existing ? (bool_(existing.is_staff) ? 'TRUE':'FALSE') : 'FALSE'),
+    family_json: JSON.stringify(Array.isArray(it.family) ? it.family : (existing ? safeJson_(existing.family_json, []) : []))
+  };
+
+  upsertByKey_(SH.participants, 'nik', obj);
+
+  // optional log
+  try{
+    if(SH.logs){
+      const msg = 'public.participantsUpsert nik=' + nik + ' name=' + name;
+      sh_(SH.logs).appendRow([nowIso_(), 'UPSERT_PARTICIPANT_PUBLIC', msg]);
+    }
+  }catch{}
+
+  return { ok:true };
 }
 
 function public_getAttendanceStatus_(p){
