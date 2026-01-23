@@ -157,6 +157,7 @@
 
   const $ = (s, r=document)=> r.querySelector(s);
   const wrap = $('#fam-wrap');
+  if (wrap) wrap.classList.add('space-y-2');
   const status = $('#status');
 
   // Hubungan keluarga (dipaksa seragam via dropdown)
@@ -205,45 +206,64 @@
     const relation_other = String(parsed.relation_other||'');
 
     const div = document.createElement('div');
-    div.className = 'fam-item grid grid-cols-1 md:grid-cols-12 gap-2 items-start';
+
+    // Card wrapper
+    div.className = 'fam-item w-full rounded-2xl bg-white/70 border border-slate-200 p-3 md:p-4';
+
     div.innerHTML = `
-      <div class="fam-row grid grid-cols-12 gap-2 items-center">
-      <div class="col-span-4">
-      <select class="fam-rel w-full p-3 border rounded-xl">
-        <option value="" ${relation===''?'selected':''} disabled>-- Hub --</option>
-        ${relationOptionsHTML(relation)}
-      </select>
+      <!-- ROW: mobile tetap 1 garis, desktop dipaksa grid agar stabil -->
+      <div class="fg-fam-row w-full flex items-center gap-2 sm:gap-3
+                  md:grid md:items-stretch md:gap-3
+                  md:grid-cols-[220px_minmax(0,1fr)_56px]">
+
+        <!-- Hubungan -->
+        <div class="shrink-0 w-[110px] sm:w-[140px] md:w-auto">
+          <select class="fam-rel w-full px-3 py-3 border border-slate-200 rounded-xl bg-gray
+                        focus:outline-none focus:ring-2 focus:ring-sky-200">
+            <option value="" ${relation===''?'selected':''} disabled>-- Hub --</option>
+            ${relationOptionsHTML(relation)}
+          </select>
+        </div>
+
+        <!-- Nama -->
+        <div class="flex-1 min-w-0 md:w-auto">
+          <input class="fam-name w-full px-3 py-3 border border-slate-200 rounded-xl bg-white
+                        focus:outline-none focus:ring-2 focus:ring-sky-200"
+            placeholder="Nama anggota keluarga"
+            value="${fam_name.replace(/"/g,'&quot;')}"
+          />
+        </div>
+
+        <!-- Hapus -->
+        <div class="shrink-0 flex justify-end md:justify-center md:items-stretch">
+          <button type="button"
+            class="fam-del w-10 h-10 md:w-12 md:h-12 rounded-xl bg-red-50 text-red-600
+                  hover:bg-red-100 active:scale-[0.98] flex items-center justify-center"
+            title="Hapus">
+            <i class="fa fa-trash"></i>
+          </button>
+        </div>
       </div>
 
-      <div class="col-span-7">
-      <input class="fam-name w-full p-3 border rounded-xl"
-        placeholder="Nama anggota keluarga"
-        value="${fam_name.replace(/"/g,'&quot;')}"
-      />
+      <!-- Lainnya -->
+      <div class="mt-2" style="display:${relation==='Lainnya'?'block':'none'}">
+        <input
+          class="fam-other w-full px-3 py-3 border border-slate-200 rounded-xl bg-white
+                focus:outline-none focus:ring-2 focus:ring-sky-200"
+          placeholder="Sebutkan hubungan (jika pilih Lainnya)"
+          value="${relation_other.replace(/"/g,'&quot;')}"
+        />
       </div>
-
-      <div class="col-span-1 flex justify-end">
-      <button type="button" class="fam-del w-10 h-10 rounded-xl bg-red-50 text-red-600 hover:bg-red-100" title="Hapus">
-        <i class="fa fa-trash"></i>
-      </button>
-      </div>
-      </div>
-
-      <input
-        class="fam-other md:col-span-12 w-full p-3 border rounded-xl"
-        placeholder="Sebutkan hubungan (jika pilih Lainnya)"
-        value="${relation_other.replace(/"/g,'&quot;')}"
-        style="display:${relation==='Lainnya'?'block':'none'}"
-      />
     `;
 
     // toggle other
     const sel = div.querySelector('.fam-rel');
+    const otherWrap = div.querySelector('.fam-other')?.parentElement;
     const other = div.querySelector('.fam-other');
-    if(sel && other){
+    if(sel && otherWrap && other){
       sel.addEventListener('change', ()=>{
         const v = (sel.value||'').trim();
-        other.style.display = (v==='Lainnya') ? 'block' : 'none';
+        otherWrap.style.display = (v==='Lainnya') ? 'block' : 'none';
         if(v!=='Lainnya') other.value = '';
       });
     }
