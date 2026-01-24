@@ -1,0 +1,74 @@
+/* FG2026 - Rundown Operator
+   Catatan:
+   - UI utama sudah pakai Tailwind (cdn.tailwindcss.com)
+   - File ini hanya untuk sentuhan kecil: font, animasi, dan helper class.
+*/
+
+:root{
+  --fg-shadow: 0 10px 30px rgba(15, 23, 42, .08);
+}
+
+/* Typo base */
+html, body{
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Card feel */
+.fg-card{
+  box-shadow: var(--fg-shadow);
+}
+
+/* Subtle appear */
+@keyframes fg-fade-up{
+  from{ opacity:0; transform: translateY(8px); }
+  to{ opacity:1; transform: translateY(0); }
+}
+.fg-animate-in{
+  animation: fg-fade-up .25s ease-out both;
+}
+
+/* Button loading spinner (dipakai via .is-loading di app.js) */
+@keyframes fg-spin{ to{ transform: rotate(360deg); } }
+.is-loading{
+  pointer-events: none;
+  opacity: .92;
+  position: relative;
+}
+.is-loading::after{
+  content: "";
+  width: 1em;
+  height: 1em;
+  border: 2px solid rgba(255,255,255,.45);
+  border-top-color: rgba(255,255,255,1);
+  border-radius: 999px;
+  animation: fg-spin .7s linear infinite;
+  display: inline-block;
+  margin-left: .5rem;
+  vertical-align: -0.15em;
+}
+
+/* Untuk tombol non-solid (bg-gray) */
+.is-loading.bg-gray-100::after,
+.is-loading.bg-gray-200::after{
+  border-color: rgba(15,23,42,.25);
+  border-top-color: rgba(15,23,42,.75);
+}
+
+/* Sticky header (opsional, aman kalau tidak dipakai) */
+.fg-sticky{
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  backdrop-filter: blur(10px);
+}
+
+/* Better scroll on mobile */
+.fg-scroll{
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Small screen tweaks */
+@media (max-width: 420px){
+  .fg-hide-xs{ display:none !important; }
+}

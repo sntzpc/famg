@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live Map - FG2026</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="config.js"></script>
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="libs/leaflet/leaflet.css" />
+  <link rel="stylesheet" href="libs/leaflet.markercluster/MarkerCluster.css" />
+  <link rel="stylesheet" href="libs/leaflet.markercluster/MarkerCluster.Default.css" />
+
+  <link rel="stylesheet" href="css/livemap.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Ctext y='50' x='10' font-size='56'%3E%F0%9F%97%BA%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <header class="sticky top-0 z-50 bg-white/80 backdrop-blur border-b">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+      <div class="min-w-0">
+        <div class="flex items-center gap-2">
+          <div class="w-9 h-9 rounded-2xl bg-slate-900 text-white grid place-items-center font-bold">LM</div>
+          <div class="min-w-0">
+            <div id="app-title" class="font-extrabold tracking-tight truncate">Live Map</div>
+            <div id="app-subtitle" class="text-xs text-slate-500 truncate">Memantau posisi peserta</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button id="btn-refresh" class="px-3 py-2 rounded-xl border bg-white hover:bg-slate-50 text-sm">
+          <span class="inline-flex items-center gap-2"><span>Refresh</span><span id="last-upd" class="text-xs text-slate-500"></span></span>
+        </button>
+        <button id="btn-toggle" class="px-3 py-2 rounded-xl border bg-white hover:bg-slate-50 text-sm lg:hidden">
+          Panel
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-4">
+    <div class="grid lg:grid-cols-[380px_1fr] gap-4">
+      <!-- PANEL -->
+      <aside id="panel" class="lg:block hidden">
+        <div class="rounded-2xl border bg-white p-4 shadow-sm">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <div class="font-bold">Ringkasan</div>
+              <div id="event-loc" class="text-xs text-slate-500 mt-1">-</div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs text-slate-500">Auto-refresh</div>
+              <select id="sel-interval" class="mt-1 text-sm rounded-xl border px-2 py-1 bg-white">
+                <option value="5">5 detik</option>
+                <option value="10">10 detik</option>
+                <option value="15">15 detik</option>
+                <option value="30">30 detik</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- mobile close button (hanya tampil saat panel jadi bottom-sheet) -->
+          <div class="mt-3 flex items-center justify-between lg:hidden">
+            <div class="text-xs text-slate-500">Filter & daftar peserta</div>
+            <button id="btn-close-panel" class="px-3 py-2 rounded-xl border bg-white hover:bg-slate-50 text-sm">Tutup</button>
+          </div>
+
+          <div class="mt-4 grid grid-cols-2 gap-2">
+            <button id="btn-in" class="text-left rounded-2xl border p-3 hover:bg-slate-50">
+              <div class="text-xs text-slate-500">Dalam radius</div>
+              <div class="mt-1 flex items-end justify-between">
+                <div id="cnt-in" class="text-3xl font-extrabold">0</div>
+                <div class="text-xs text-slate-500">aktif / tidak</div>
+              </div>
+              <div class="mt-1 text-xs text-slate-600"><span id="cnt-in-a">0</span> / <span id="cnt-in-i">0</span></div>
+            </button>
+
+            <button id="btn-out" class="text-left rounded-2xl border p-3 hover:bg-slate-50">
+              <div class="text-xs text-slate-500">Di luar radius</div>
+              <div class="mt-1 flex items-end justify-between">
+                <div id="cnt-out" class="text-3xl font-extrabold">0</div>
+                <div class="text-xs text-slate-500">aktif / tidak</div>
+              </div>
+              <div class="mt-1 text-xs text-slate-600"><span id="cnt-out-a">0</span> / <span id="cnt-out-i">0</span></div>
+            </button>
+          </div>
+
+          <div class="mt-4">
+            <label class="text-xs text-slate-500">Filter</label>
+            <input id="q" type="search" placeholder="Cari NIK / Nama..." class="mt-1 w-full rounded-2xl border px-3 py-2 bg-white" />
+          </div>
+
+          <div class="mt-3 grid grid-cols-2 gap-2">
+            <select id="sel-scope" class="rounded-2xl border px-3 py-2 bg-white text-sm">
+              <option value="all">Semua</option>
+              <option value="in">Dalam radius</option>
+              <option value="out">Di luar radius</option>
+            </select>
+            <select id="sel-active" class="rounded-2xl border px-3 py-2 bg-white text-sm">
+              <option value="all">Aktif + Tidak aktif</option>
+              <option value="active">Aktif</option>
+              <option value="inactive">Tidak aktif</option>
+            </select>
+          </div>
+
+          <div class="mt-3 grid grid-cols-2 gap-2">
+            <select id="sel-region" class="rounded-2xl border px-3 py-2 bg-white text-sm">
+              <option value="all">Semua region</option>
+            </select>
+            <select id="sel-unit" class="rounded-2xl border px-3 py-2 bg-white text-sm">
+              <option value="all">Semua unit</option>
+            </select>
+          </div>
+
+          <div class="mt-4">
+            <div class="flex items-center justify-between">
+              <div class="font-bold">Daftar</div>
+              <select id="sel-idle" class="text-sm rounded-xl border px-2 py-1 bg-white">
+                <option value="5">Idle 5m</option>
+                <option value="10" selected>Idle 10m</option>
+                <option value="20">Idle 20m</option>
+                <option value="30">Idle 30m</option>
+              </select>
+            </div>
+            <div id="list" class="mt-2 max-h-[55vh] overflow-auto pr-1"></div>
+          </div>
+
+          <div id="err" class="mt-3 hidden text-sm text-red-700 bg-red-50 border border-red-100 rounded-2xl p-3"></div>
+        </div>
+      </aside>
+
+      <!-- MAP -->
+      <section class="rounded-2xl border bg-white shadow-sm overflow-hidden min-h-[72vh]">
+        <div id="map" class="w-full h-[72vh]"></div>
+      </section>
+    </div>
+  </main>
+
+  <script src="libs/leaflet/leaflet.js"></script>
+  <script src="libs/leaflet.markercluster/leaflet.markercluster.js"></script>
+  <script src="js/livemap.js"></script>
+</body>
+</html>
