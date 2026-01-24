@@ -149,7 +149,7 @@
                         <i class="fas fa-sync-alt"></i>
                         <span>Refresh Data</span>
                     </button>
-                    <div id="connBadge" class="text-xs px-3 py-1 bg-gray-100 text-gray-700 rounded-full flex items-center">  <i id="connDot" class="fas fa-circle text-xs mr-1 text-gray-400"></i>  <span id="connText">Mengecek koneksi...</span></div>
+<div id="connBadge" class="text-xs px-3 py-1 bg-gray-100 text-gray-700 rounded-full flex items-center">  <i id="connDot" class="fas fa-circle text-xs mr-1 text-gray-400"></i>  <span id="connText">Mengecek koneksi...</span></div>
                 </div>
             </div>
         </div>
@@ -466,6 +466,7 @@
 
     <!-- JavaScript -->
     <script>
+
     // =========================================================
     // KONFIGURASI
     // =========================================================
@@ -478,16 +479,7 @@
 const GAS_URL_PRIMARY = 'https://script.google.com/macros/s/AKfycbyBaE0VnTCHRADWt29riAOPHO1UjFvkhgXYbR9eStTQr0rsWxkiGP7pTFk5dt1RUsoBzg/exec';
 
 // ✅ Jika sebelumnya ada URL yang sudah terbukti berhasil, simpan & pakai sebagai prioritas
-const GAS_URL_CANDIDATES = (function(){
-    const saved = (localStorage.getItem('fg_dash_gas_url_ok') || '').trim();
-    const arr = [];
-    if(saved) arr.push(saved);
-    if(GAS_URL_PRIMARY) arr.push(GAS_URL_PRIMARY);
-    // unique
-    return Array.from(new Set(arr));
-})();
-
-    // =========================================================
+const GAS_URL_CANDIDATES = [GAS_URL_PRIMARY];// =========================================================
     // UTIL - JSONP (aman untuk cross-domain tanpa CORS)
     // =========================================================
     function setConnectionState(state, note){
@@ -527,7 +519,44 @@ const GAS_URL_CANDIDATES = (function(){
         }
     }
 
-    function buildJsonpUrl(baseUrl, params, cbName){
+    
+    // =========================================================
+    // UI: Set GAS URL (penting untuk Chrome Mobile / device baru)
+    // =========================================================
+    function openGasUrlModal(msg){
+        const modal = document.getElementById('gasUrlModal');
+        if(!modal) return;
+        const info = document.getElementById('gasUrlInfo');
+        const inp  = document.getElementById('gasUrlInput');
+        const err  = document.getElementById('gasUrlError');
+        if(info) info.textContent = msg || 'Masukkan URL Web App GAS (akhiran /exec) yang publik (Anyone).';
+        if(err) err.textContent = '';
+        if(inp){
+            const saved = (localStorage.getItem('fg_dash_gas_url_ok')||'').trim();
+            inp.value = saved || '';
+            setTimeout(()=>{ try{ inp.focus(); }catch{} }, 50);
+        }
+        modal.classList.remove('hidden');
+    }
+    function closeGasUrlModal(){
+        const modal = document.getElementById('gasUrlModal');
+        if(modal) modal.classList.add('hidden');
+    }
+    function applyGasUrlFromInput(){
+        const inp  = document.getElementById('gasUrlInput');
+        const err  = document.getElementById('gasUrlError');
+        const url  = (inp ? inp.value : '').trim();
+        if(!url || url.includes('...') || url.includes('PASTE_')){
+            if(err) err.textContent = 'URL tidak valid. Pastikan lengkap dan berakhiran /exec.';
+            return;
+        }
+        localStorage.setItem('fg_dash_gas_url_ok', url);
+        closeGasUrlModal();
+        // reload agar kandidat URL ter-refresh
+        location.reload();
+    }
+
+function buildJsonpUrl(baseUrl, params, cbName){
         const q = new URLSearchParams({
             ...params,
             callback: cbName,
@@ -579,11 +608,7 @@ const GAS_URL_CANDIDATES = (function(){
     // - Mencoba beberapa kandidat URL (prioritas: yg tersimpan sukses)
     // =========================================================
     async function jsonpCall(params, timeoutMs = 30000){
-        if(!GAS_URL_CANDIDATES.length || (GAS_URL_CANDIDATES[0]||'').includes('PASTE_')){
-            throw new Error('GAS_URL belum diisi. Silakan paste URL Web App (exec) di variabel GAS_URL_PRIMARY.');
-        }
-
-        let lastErr = null;
+let lastErr = null;
         for(const baseUrl of GAS_URL_CANDIDATES){
             try{
                 const res = await jsonpCallOnce(baseUrl, params, timeoutMs);
@@ -669,11 +694,38 @@ const GAS_URL_CANDIDATES = (function(){
         
         // Muat data pertama kali
         setConnectionState('checking');
+        // jika device baru (mobile) belum punya URL GAS, minta user isi dulu
+        if(!GAS_URL_CANDIDATES.length){
+            setConnectionState('error','GAS URL belum diset');
+            openGasUrlModal('Device ini belum punya URL backend. Paste URL Web App GAS (akhiran /exec).');
+            return;
+        }
         fetchDashboardData();
         
         // Auto-refresh setiap 2 menit
         setInterval(fetchDashboardData, 2 * 60 * 1000);
-    });
+    
+
+        // tombol set URL
+        const bSet = document.getElementById('btnSetGasUrl');
+        if(bSet){
+            bSet.addEventListener('click', () => openGasUrlModal('Silakan ganti/isi URL Web App GAS (akhiran /exec).'));
+        }
+        const bSave = document.getElementById('btnGasUrlSave');
+        if(bSave){
+            bSave.addEventListener('click', applyGasUrlFromInput);
+        }
+        const bCancel = document.getElementById('btnGasUrlCancel');
+        if(bCancel){
+            bCancel.addEventListener('click', closeGasUrlModal);
+        }
+        const bCancel2 = document.getElementById('btnGasUrlCancel');
+        // enter = save
+        const inp = document.getElementById('gasUrlInput');
+        if(inp){
+            inp.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); applyGasUrlFromInput(); } });
+        }
+});
     
     // Fungsi untuk beralih tab
     function switchTab(tabName) {
@@ -762,7 +814,7 @@ const GAS_URL_CANDIDATES = (function(){
                 });
             }, 100);
         } else {
-            const msg = response?.error || response?.message || 'Gagal mengambil data dari server.';
+            const msg = (response && (response.error || response.message)) || 'Gagal mengambil data dari server.';
             throw new Error(msg);
         }
     }
@@ -782,7 +834,12 @@ const GAS_URL_CANDIDATES = (function(){
         // Tampilkan error message
         document.getElementById('errorTitle').textContent = 'Kesalahan Memuat Data';
         const msg = (error && error.message) ? error.message : 'Tidak dapat terhubung ke server. Coba refresh halaman.';
-        const extra = `\n\nTips cepat:\n1) Buka URL GAS di browser: ${GAS_URL_PRIMARY}?action=ping\n2) Jika muncul login/permission, berarti Web App belum publik (Anyone).\n3) Untuk Chrome Android, gunakan URL hasil redirect (domain script.googleusercontent.com).`;
+        const extra = `
+
+Tips cepat:
+1) Buka URL GAS di browser: ${GAS_URL_PRIMARY}?action=ping
+2) Jika muncul login/permission, berarti Web App belum publik (Anyone).
+3) Untuk Chrome Android, gunakan URL hasil redirect (domain script.googleusercontent.com).`;
         document.getElementById('errorDetail').textContent = msg + extra;
         document.getElementById('errorMessage').classList.remove('hidden');
         
@@ -1259,6 +1316,7 @@ const GAS_URL_CANDIDATES = (function(){
         document.getElementById('mostFamily').textContent = mostFamilyParticipant ? 
             `${mostFamilyParticipant.name ? mostFamilyParticipant.name.substring(0, 15) + (mostFamilyParticipant.name.length > 15 ? '...' : '') : 'N/A'} (${maxFamilyCount})` : '-';
     }
+
 </script>
 </body>
 </html>
