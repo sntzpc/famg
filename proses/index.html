@@ -625,7 +625,7 @@ function setConnectionState(state, note){
 
   const map = {
     checking: { badge:'bg-gray-100 text-gray-700', dot:'text-gray-400', label:'Mengecek koneksi...' },
-    ok:       { badge:'bg-green-100 text-green-800', dot:'text-green-500', label:'Google Sheets Connected' },
+    ok:       { badge:'bg-green-100 text-green-800', dot:'text-green-500', label:'Connected' },
     error:    { badge:'bg-red-100 text-red-800', dot:'text-red-500', label:'Server Error' }
   };
   const cfg = map[state] || map.checking;
@@ -1259,7 +1259,7 @@ function setConnectionState(state, note){
                 <!-- Actions -->
                 <div class="pt-4 border-t">
                     <p class="text-sm text-gray-500 mb-4">
-                        <i class="fas fa-info-circle mr-1"></i> Data ini berasal dari Google Sheets
+                        <i class="fas fa-info-circle mr-1"></i> Data ini berasal dari Server
                     </p>
                     <div class="flex justify-end space-x-3">
                         <button onclick="window.print()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">
