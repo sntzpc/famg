@@ -149,10 +149,7 @@
                         <i class="fas fa-sync-alt"></i>
                         <span>Refresh Data</span>
                     </button>
-                    <div class="text-xs px-3 py-1 bg-green-100 text-green-800 rounded-full flex items-center">
-                        <i class="fas fa-circle text-xs mr-1"></i>
-                        <span>Google Sheets Connected</span>
-                    </div>
+                    <div id="connBadge" class="text-xs px-3 py-1 bg-gray-100 text-gray-700 rounded-full flex items-center">  <i id="connDot" class="fas fa-circle text-xs mr-1 text-gray-400"></i>  <span id="connText">Mengecek koneksi...</span></div>
                 </div>
             </div>
         </div>
@@ -444,7 +441,7 @@
             <p>Dashboard Pendaftaran Peserta &copy; 2026 </p>
             <p class="mt-1">Terhubung dengan Server: 
                 <span id="sheetStatus" class="font-medium text-green-600">
-                    <i class="fas fa-circle text-xs mr-1"></i>Aktif
+                    <i class="fas fa-circle text-xs mr-1 text-gray-400"></i>Checking
                 </span>
             </p>
         </div>
@@ -474,51 +471,137 @@
     // =========================================================
     // ✅ Hardcode URL Web App Google Apps Script (gunakan URL "exec")
     // Disarankan: pakai domain script.googleusercontent.com untuk akses dari GitHub/hosting statis.
-    const GAS_URL = 'https://script.google.com/macros/s/AKfycbzviU647KVt6EnN9PFHAuX1wSB5AkQ9W2AA4LcUPqj2B9bmbbmDMdatNv_79LxRiBr9QA/exec';
+    // ✅ Hardcode URL Web App Google Apps Script (gunakan URL "exec").
+// CATATAN penting (Chrome Android):
+// - Jika URL memakai domain script.google.com, kadang JSONP bisa gagal karena mekanisme redirect/akses.
+// - Paling stabil: gunakan URL yang ber-domain script.googleusercontent.com (hasil redirect ketika URL exec dibuka).
+const GAS_URL_PRIMARY = 'https://script.google.com/macros/s/AKfycbzviU647KVt6EnN9PFHAuX1wSB5AkQ9W2AA4LcUPqj2B9bmbbmDMdatNv_79LxRiBr9QA/exec';
+
+// ✅ Jika sebelumnya ada URL yang sudah terbukti berhasil, simpan & pakai sebagai prioritas
+const GAS_URL_CANDIDATES = (function(){
+    const saved = (localStorage.getItem('fg_dash_gas_url_ok') || '').trim();
+    const arr = [];
+    if(saved) arr.push(saved);
+    if(GAS_URL_PRIMARY) arr.push(GAS_URL_PRIMARY);
+    // unique
+    return Array.from(new Set(arr));
+})();
 
     // =========================================================
     // UTIL - JSONP (aman untuk cross-domain tanpa CORS)
     // =========================================================
-    function jsonpCall(params, timeoutMs = 30000){
-        return new Promise((resolve, reject) => {
-            if(!GAS_URL || GAS_URL.includes('PASTE_')){
-                reject(new Error('GAS_URL belum diisi. Silakan paste URL Web App (exec) di variabel GAS_URL.'));
-                return;
-            }
+    function setConnectionState(state, note){
+        // state: 'checking' | 'ok' | 'error'
+        const badge = document.getElementById('connBadge');
+        const dot   = document.getElementById('connDot');
+        const text  = document.getElementById('connText');
+        const foot  = document.getElementById('sheetStatus');
 
+        const map = {
+            checking: { badge:'bg-gray-100 text-gray-700', dot:'text-gray-400', label:'Mengecek koneksi...' },
+            ok:       { badge:'bg-green-100 text-green-800', dot:'text-green-500', label:'Google Sheets Connected' },
+            error:    { badge:'bg-red-100 text-red-800', dot:'text-red-500', label:'Server Error' }
+        };
+        const cfg = map[state] || map.checking;
+
+        if(badge){
+            badge.className = `text-xs px-3 py-1 rounded-full flex items-center ${cfg.badge}`;
+        }
+        if(dot){
+            dot.className = `fas fa-circle text-xs mr-1 ${cfg.dot}`;
+        }
+        if(text){
+            text.textContent = note ? `${cfg.label} — ${note}` : cfg.label;
+        }
+        if(foot){
+            if(state === 'ok'){
+                foot.innerHTML = '<i class="fas fa-circle text-xs mr-1 text-green-500"></i>Aktif';
+                foot.className = 'font-medium text-green-600';
+            }else if(state === 'error'){
+                foot.innerHTML = '<i class="fas fa-circle text-xs mr-1 text-red-500"></i>Error';
+                foot.className = 'font-medium text-red-600';
+            }else{
+                foot.innerHTML = '<i class="fas fa-circle text-xs mr-1 text-gray-400"></i>Checking';
+                foot.className = 'font-medium text-gray-600';
+            }
+        }
+    }
+
+    function buildJsonpUrl(baseUrl, params, cbName){
+        const q = new URLSearchParams({
+            ...params,
+            callback: cbName,
+            _t: Date.now().toString()
+        });
+        return baseUrl + (baseUrl.includes('?') ? '&' : '?') + q.toString();
+    }
+
+    function jsonpCallOnce(baseUrl, params, timeoutMs = 30000){
+        return new Promise((resolve, reject) => {
             const cb = '__fg_jsonp_' + Date.now() + '_' + Math.random().toString(16).slice(2);
-            const cleanUp = (scriptEl) => {
+            let script = null;
+
+            const cleanUp = () => {
                 try{ delete window[cb]; }catch(e){ window[cb] = undefined; }
-                if(scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+                if(script && script.parentNode) script.parentNode.removeChild(script);
             };
 
-            let script = null;
             const timer = setTimeout(() => {
-                cleanUp(script);
+                cleanUp();
                 reject(new Error('Timeout: Tidak dapat mengambil data dari server'));
             }, timeoutMs);
 
             window[cb] = (data) => {
                 clearTimeout(timer);
-                cleanUp(script);
+                cleanUp();
                 resolve(data);
             };
 
-            const q = new URLSearchParams({
-                ...params,
-                callback: cb,
-                _t: Date.now().toString()
-            });
+            const url = buildJsonpUrl(baseUrl, params, cb);
 
             script = document.createElement('script');
-            script.src = GAS_URL + (GAS_URL.includes('?') ? '&' : '?') + q.toString();
+            script.async = true;
+            script.src = url;
+            // bantu Chrome Android untuk kasus tertentu
+            script.referrerPolicy = 'no-referrer-when-downgrade';
             script.onerror = () => {
                 clearTimeout(timer);
-                cleanUp(script);
-                reject(new Error('Gagal memuat script JSONP. Pastikan URL GAS benar dan Web App dapat diakses publik.'));
+                cleanUp();
+                reject(new Error('Gagal memuat script JSONP. URL GAS tidak bisa diakses / diblokir / bukan publik.'));
             };
+
             document.head.appendChild(script);
         });
+    }
+
+    // =========================================================
+    // UTIL - JSONP (aman untuk cross-domain tanpa CORS)
+    // - Mencoba beberapa kandidat URL (prioritas: yg tersimpan sukses)
+    // =========================================================
+    async function jsonpCall(params, timeoutMs = 30000){
+        if(!GAS_URL_CANDIDATES.length || (GAS_URL_CANDIDATES[0]||'').includes('PASTE_')){
+            throw new Error('GAS_URL belum diisi. Silakan paste URL Web App (exec) di variabel GAS_URL_PRIMARY.');
+        }
+
+        let lastErr = null;
+        for(const baseUrl of GAS_URL_CANDIDATES){
+            try{
+                const res = await jsonpCallOnce(baseUrl, params, timeoutMs);
+                // jika sukses, simpan URL yang berhasil
+                localStorage.setItem('fg_dash_gas_url_ok', baseUrl);
+                return res;
+            }catch(err){
+                lastErr = err;
+            }
+        }
+
+        // Kalau semua gagal, lempar error dengan hint
+        const hint = (GAS_URL_PRIMARY.includes('script.google.com'))
+            ? 'Coba ganti GAS_URL_PRIMARY dengan URL hasil redirect yang ber-domain script.googleusercontent.com.'
+            : 'Pastikan Web App GAS: Execute as Me, Access: Anyone.';
+        const e = new Error((lastErr && lastErr.message ? lastErr.message : 'Gagal memuat data') + ' ' + hint);
+        e._gasHint = hint;
+        throw e;
     }
 
     // State aplikasi
@@ -585,6 +668,7 @@
         });
         
         // Muat data pertama kali
+        setConnectionState('checking');
         fetchDashboardData();
         
         // Auto-refresh setiap 2 menit
@@ -629,6 +713,7 @@
         refreshBtn.disabled = true;
         
         // Panggil GAS (JSONP) - aman tanpa CORS
+        setConnectionState('checking');
         jsonpCall({ action: 'dashboard' }, 30000)
             .then(handleDashboardData)
             .catch(handleError);
@@ -667,9 +752,7 @@
                 lastUpdated.toLocaleTimeString('id-ID') + ' WIB';
                 
             // Update status
-            document.getElementById('sheetStatus').innerHTML = 
-                '<i class="fas fa-circle text-xs mr-1 text-green-500"></i>Aktif';
-            document.getElementById('sheetStatus').className = 'font-medium text-green-600';
+            setConnectionState('ok');
                 
             // Highlight perubahan
             document.querySelectorAll('.highlight').forEach(el => el.classList.remove('highlight'));
@@ -698,14 +781,13 @@
         
         // Tampilkan error message
         document.getElementById('errorTitle').textContent = 'Kesalahan Memuat Data';
-        document.getElementById('errorDetail').textContent = error.message || 'Tidak dapat terhubung ke server. Coba refresh halaman.';
+        const msg = (error && error.message) ? error.message : 'Tidak dapat terhubung ke server. Coba refresh halaman.';
+        const extra = `\n\nTips cepat:\n1) Buka URL GAS di browser: ${GAS_URL_PRIMARY}?action=ping\n2) Jika muncul login/permission, berarti Web App belum publik (Anyone).\n3) Untuk Chrome Android, gunakan URL hasil redirect (domain script.googleusercontent.com).`;
+        document.getElementById('errorDetail').textContent = msg + extra;
         document.getElementById('errorMessage').classList.remove('hidden');
         
-        // Update status sheet
-        document.getElementById('sheetStatus').innerHTML = 
-            '<i class="fas fa-circle text-xs mr-1 text-red-500"></i>Error';
-        document.getElementById('sheetStatus').className = 'font-medium text-red-600';
-        
+        setConnectionState('error');
+
     }
     
     // Render dashboard dengan data
