@@ -124,6 +124,25 @@
             from {opacity: 0; transform: translateY(-50px);}
             to {opacity: 1; transform: translateY(0);}
         }
+
+        /* ===== No-wrap khusus tabel progress ===== */
+        .tbl-nowrap th,
+        .tbl-nowrap td{
+        white-space: nowrap;
+        }
+
+        /* Untuk kolom progress biar tidak kepotong di layar kecil */
+        .tbl-nowrap .col-progress{
+        min-width: 180px;
+        }
+
+        /* Region/Unit kolom name biar tetap rapi */
+        .tbl-nowrap .col-name{
+        max-width: 240px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        }
+
     </style>
 </head>
 <body class="bg-gray-50">
@@ -268,11 +287,11 @@
                         </div>
                         <div class="p-4">
                             <div class="overflow-x-auto">
-                                <table class="w-full">
+                                <table class="w-full tbl-nowrap">
                                     <thead>
                                         <tr class="border-b">
-                                            <th class="text-left py-3 px-4 text-gray-700 font-medium">Region</th>
-                                            <th class="text-left py-3 px-4 text-gray-700 font-medium">Progress</th>
+                                            <th class="text-left py-3 px-4 text-gray-700 font-medium col-name">Region</th>
+                                            <th class="text-left py-3 px-4 text-gray-700 font-medium col-progress">Progress</th>
                                             <th class="text-left py-3 px-4 text-gray-700 font-medium">Peserta</th>
                                             <th class="text-left py-3 px-4 text-gray-700 font-medium">Status</th>
                                         </tr>
@@ -305,12 +324,12 @@
                         </div>
                         <div class="p-4">
                             <div class="overflow-x-auto">
-                                <table class="w-full">
+                                <table class="w-full tbl-nowrap">
                                     <thead>
                                         <tr class="border-b">
-                                            <th class="text-left py-3 px-4 text-gray-700 font-medium">Unit</th>
-                                            <th class="text-left py-3 px-4 text-gray-700 font-medium">Region</th>
-                                            <th class="text-left py-3 px-4 text-gray-700 font-medium">Progress</th>
+                                            <th class="text-left py-3 px-4 text-gray-700 font-medium col-name">Unit</th>
+                                            <th class="text-left py-3 px-4 text-gray-700 font-medium col-name">Region</th>
+                                            <th class="text-left py-3 px-4 text-gray-700 font-medium col-progress">Progress</th>
                                             <th class="text-left py-3 px-4 text-gray-700 font-medium">Detail</th>
                                         </tr>
                                     </thead>
@@ -466,20 +485,136 @@
 
     <!-- JavaScript -->
     <script>
+        /* =========================================================
+   ✅ FG2026 - GAS Transport (Hardcode, Mobile-Safe)
+   - Prioritas: script.googleusercontent.com (paling stabil di Chrome mobile)
+   - Fallback: exec (script.google.com) jika memang masih bisa
+   - Mode: JSONP (anti CORS)
+   ========================================================= */
 
-        // =========================================================
-// KONFIGURASI (Hardcode, tanpa modal, auto-convert ke googleusercontent)
-// =========================================================
+// 1) URL WEB APP GAS (tetap hardcode)
 const GAS_URL_EXEC = 'https://script.google.com/macros/s/AKfycbyBaE0VnTCHRADWt29riAOPHO1UjFvkhgXYbR9eStTQr0rsWxkiGP7pTFk5dt1RUsoBzg/exec';
 
-// Akan diisi otomatis dengan URL googleusercontent hasil redirect
-let GAS_URL_GOOGLEUSERCONTENT = '';
+/*
+  2) URL GOOGLEUSERCONTENT (HARUS DIISI)
+  Cara ambil (sekali saja):
+  - Buka GAS_URL_EXEC?action=ping di Chrome (mobile/desktop)
+  - Setelah terbuka, lihat address bar -> biasanya berubah jadi domain:
+    https://script.googleusercontent.com/macros/echo?user_content_key=...  (atau /macros/s/.../exec?... tergantung deploy)
+  - Copy BASE-nya (tanpa parameter) dan tempel ke sini.
+*/
+const GAS_URL_GUC = 'https://script.googleusercontent.com/macros/echo?user_content_key=AehSKLgATx6jMOivogVFNnRZeL45OSp5iA_r1yfH9nGnc712nIOjpkBw1sZaoXXPtiya84o8XDtfUbQD2zs_VI6dmjjnSPoiHQd5zgVwcAwkAqepIMXM-3CN6dPIEyT19jELOFtnVFkGLnKlT6Vw4jb-sdUR_fqIHPuwoRyx_oArtWrb39Tq9s9sAaB264Z8fHmcGwqo1jbqspxBAmp7OjS9AdQdIOW9T50W5zzhtiKUXYNxy_BTNrYnQYDibo6PNfzbCLmbCvx6NPerBmJPssoKq2xRBcWytH5IGGtNqtqO&lib=M5DiC9OQoftpoUhPXkYX1CEmSx4WqhLym';
 
-// cache in-memory + localStorage supaya device berikutnya lebih cepat
-const LS_KEY_GAS_REDIRECT = 'fg_dash_gas_redirect_v1';
+// cache untuk cadangan (opsional)
+const LS_KEY_LAST_GOOD_BASE = 'fg_dash_last_good_base_v1';
 
 // =========================================================
-// UTIL - Status koneksi (tetap seperti punya Anda)
+// JSONP helper (mobile-safe)
+// =========================================================
+function buildJsonpUrl(baseUrl, params, cbName){
+  const q = new URLSearchParams({
+    ...params,
+    callback: cbName,
+    _t: Date.now().toString()
+  });
+  return baseUrl + (baseUrl.includes('?') ? '&' : '?') + q.toString();
+}
+
+function jsonpCallOnce(baseUrl, params, timeoutMs = 30000){
+  return new Promise((resolve, reject) => {
+    const cb = '__fg_jsonp_' + Date.now() + '_' + Math.random().toString(16).slice(2);
+    let script = null;
+    let done = false;
+
+    const cleanUp = () => {
+      try { delete window[cb]; } catch(e){ window[cb] = undefined; }
+      if(script && script.parentNode) script.parentNode.removeChild(script);
+    };
+
+    const timer = setTimeout(() => {
+      if(done) return;
+      done = true;
+      cleanUp();
+      reject(new Error('Timeout: Tidak ada respon dari server (JSONP).'));
+    }, timeoutMs);
+
+    window[cb] = (data) => {
+      if(done) return;
+      done = true;
+      clearTimeout(timer);
+      cleanUp();
+      resolve(data);
+    };
+
+    const url = buildJsonpUrl(baseUrl, params, cb);
+
+    script = document.createElement('script');
+    script.async = true;
+    script.defer = true;
+    script.src = url;
+
+    // tambahan kompatibilitas Chrome mobile
+    script.crossOrigin = 'anonymous';
+    script.referrerPolicy = 'no-referrer-when-downgrade';
+
+    script.onerror = () => {
+      if(done) return;
+      done = true;
+      clearTimeout(timer);
+      cleanUp();
+      reject(new Error('Gagal memuat JSONP. URL tidak publik / diblokir / salah base URL.'));
+    };
+
+    document.head.appendChild(script);
+  });
+}
+
+/*
+  Kandidat base URL:
+  1) last good base (kalau pernah sukses)
+  2) GAS_URL_GUC (hardcode)
+  3) GAS_URL_EXEC (fallback)
+*/
+function getBaseCandidates(){
+  const list = [];
+
+  const lastGood = (localStorage.getItem(LS_KEY_LAST_GOOD_BASE) || '').trim();
+  if(lastGood) list.push(lastGood);
+
+  const guc = String(GAS_URL_GUC || '').trim();
+  if(guc && guc !== 'PASTE_URL_GOOGLEUSERCONTENT_EXEC_DISINI') list.push(guc);
+
+  list.push(GAS_URL_EXEC);
+
+  // unique
+  return Array.from(new Set(list));
+}
+
+async function jsonpCall(params, timeoutMs = 30000){
+  const candidates = getBaseCandidates();
+  let lastErr = null;
+
+  for(const baseUrl of candidates){
+    try{
+      const res = await jsonpCallOnce(baseUrl, params, timeoutMs);
+
+      // simpan base yang berhasil
+      localStorage.setItem(LS_KEY_LAST_GOOD_BASE, baseUrl);
+      return res;
+    }catch(err){
+      lastErr = err;
+    }
+  }
+
+  const hint =
+    'Pastikan Web App GAS: Execute as Me, Who has access: Anyone. ' +
+    'Dan pastikan GAS_URL_GUC sudah benar (domain script.googleusercontent.com).';
+
+  throw new Error(((lastErr && lastErr.message) ? lastErr.message : 'Gagal memuat data') + ' | ' + hint);
+}
+
+// =========================================================
+// UI: Status koneksi (Badge atas + status footer)
 // =========================================================
 function setConnectionState(state, note){
   const badge = document.getElementById('connBadge');
@@ -510,131 +645,6 @@ function setConnectionState(state, note){
       foot.className = 'font-medium text-gray-600';
     }
   }
-}
-
-// =========================================================
-// 1) Auto-resolve redirect: script.google.com -> script.googleusercontent.com
-//    Tanpa interaksi user.
-// =========================================================
-async function resolveGasRedirectUrl(){
-  // 1) pakai cache localStorage dulu (lebih cepat)
-  const cached = (localStorage.getItem(LS_KEY_GAS_REDIRECT) || '').trim();
-  if(cached && cached.includes('script.googleusercontent.com') && cached.includes('/exec')){
-    GAS_URL_GOOGLEUSERCONTENT = cached;
-    return cached;
-  }
-
-  // 2) cek lewat fetch dengan redirect follow untuk dapat final URL
-  // Catatan: ini bukan JSONP, hanya untuk mengetahui final redirected URL.
-  // Jika fetch diblokir oleh kebijakan tertentu, kita tetap fallback ke GAS_URL_EXEC.
-  try{
-    const pingUrl = GAS_URL_EXEC + (GAS_URL_EXEC.includes('?') ? '&' : '?') + 'action=ping&_t=' + Date.now();
-    const res = await fetch(pingUrl, {
-      method: 'GET',
-      redirect: 'follow',
-      cache: 'no-store',
-      // mode default 'cors' - untuk GAS biasanya boleh (GET publik).
-    });
-
-    // final URL setelah redirect (Chrome Android biasanya memberi URL googleusercontent)
-    const finalUrl = (res && res.url) ? String(res.url) : '';
-    if(finalUrl.includes('script.googleusercontent.com') && finalUrl.includes('/exec')){
-      GAS_URL_GOOGLEUSERCONTENT = finalUrl.split('?')[0]; // ambil base /exec saja
-      localStorage.setItem(LS_KEY_GAS_REDIRECT, GAS_URL_GOOGLEUSERCONTENT);
-      return GAS_URL_GOOGLEUSERCONTENT;
-    }
-  }catch(e){
-    // ignore -> fallback
-  }
-
-  // 3) fallback tetap ke exec
-  GAS_URL_GOOGLEUSERCONTENT = '';
-  return '';
-}
-
-// =========================================================
-// 2) JSONP helper
-// =========================================================
-function buildJsonpUrl(baseUrl, params, cbName){
-  const q = new URLSearchParams({
-    ...params,
-    callback: cbName,
-    _t: Date.now().toString()
-  });
-  return baseUrl + (baseUrl.includes('?') ? '&' : '?') + q.toString();
-}
-
-function jsonpCallOnce(baseUrl, params, timeoutMs = 30000){
-  return new Promise((resolve, reject) => {
-    const cb = '__fg_jsonp_' + Date.now() + '_' + Math.random().toString(16).slice(2);
-    let script = null;
-
-    const cleanUp = () => {
-      try{ delete window[cb]; }catch(e){ window[cb] = undefined; }
-      if(script && script.parentNode) script.parentNode.removeChild(script);
-    };
-
-    const timer = setTimeout(() => {
-      cleanUp();
-      reject(new Error('Timeout: Tidak dapat mengambil data dari server'));
-    }, timeoutMs);
-
-    window[cb] = (data) => {
-      clearTimeout(timer);
-      cleanUp();
-      resolve(data);
-    };
-
-    const url = buildJsonpUrl(baseUrl, params, cb);
-
-    script = document.createElement('script');
-    script.async = true;
-    script.src = url;
-
-    // membantu Chrome Android
-    script.referrerPolicy = 'no-referrer-when-downgrade';
-
-    script.onerror = () => {
-      clearTimeout(timer);
-      cleanUp();
-      reject(new Error('Gagal memuat JSONP. Backend mungkin tidak publik / diblokir / URL tidak cocok.'));
-    };
-
-    document.head.appendChild(script);
-  });
-}
-
-// =========================================================
-// 3) JSONP call (prioritas googleusercontent hasil resolve, fallback exec)
-// =========================================================
-async function jsonpCall(params, timeoutMs = 30000){
-  // pastikan kita sudah punya URL googleusercontent kalau memungkinkan
-  if(!GAS_URL_GOOGLEUSERCONTENT){
-    await resolveGasRedirectUrl();
-  }
-
-  const candidates = [];
-  if(GAS_URL_GOOGLEUSERCONTENT) candidates.push(GAS_URL_GOOGLEUSERCONTENT);
-  candidates.push(GAS_URL_EXEC);
-
-  let lastErr = null;
-  for(const baseUrl of candidates){
-    try{
-      const res = await jsonpCallOnce(baseUrl, params, timeoutMs);
-      // kalau sukses dan url-nya googleusercontent, cache lagi (menguatkan)
-      if(baseUrl.includes('script.googleusercontent.com')){
-        localStorage.setItem(LS_KEY_GAS_REDIRECT, baseUrl);
-      }
-      return res;
-    }catch(err){
-      lastErr = err;
-    }
-  }
-
-  const hint =
-    'Pastikan Web App GAS: Execute as Me, Access: Anyone. ' +
-    'Jika URL exec meminta login/permission, berarti belum publik.';
-  throw new Error(((lastErr && lastErr.message) ? lastErr.message : 'Gagal memuat data') + ' | ' + hint);
 }
 
     // State aplikasi
@@ -701,35 +711,11 @@ async function jsonpCall(params, timeoutMs = 30000){
         });
         
         // Muat data pertama kali
-        setConnectionState('checking');
-        
-        resolveGasRedirectUrl().finally(() => {
+        setConnectionState('checking', 'Memuat dashboard...');
         fetchDashboardData();
-        });
-            return;
+        
         // Auto-refresh setiap 2 menit
         setInterval(fetchDashboardData, 2 * 60 * 1000);
-    
-
-        // tombol set URL
-        const bSet = document.getElementById('btnSetGasUrl');
-        if(bSet){
-            bSet.addEventListener('click', () => openGasUrlModal('Silakan ganti/isi URL Web App GAS (akhiran /exec).'));
-        }
-        const bSave = document.getElementById('btnGasUrlSave');
-        if(bSave){
-            bSave.addEventListener('click', applyGasUrlFromInput);
-        }
-        const bCancel = document.getElementById('btnGasUrlCancel');
-        if(bCancel){
-            bCancel.addEventListener('click', closeGasUrlModal);
-        }
-        const bCancel2 = document.getElementById('btnGasUrlCancel');
-        // enter = save
-        const inp = document.getElementById('gasUrlInput');
-        if(inp){
-            inp.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); applyGasUrlFromInput(); } });
-        }
 });
     
     // Fungsi untuk beralih tab
@@ -827,30 +813,32 @@ async function jsonpCall(params, timeoutMs = 30000){
     // Handle error
     function handleError(error) {
         console.error('Error fetching data:', error);
-        
+
         // Sembunyikan loading skeleton
         document.getElementById('loadingSkeleton').classList.add('hidden');
-        
+
         // Reset tombol refresh
         const refreshBtn = document.getElementById('refreshBtn');
         refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> <span>Refresh Data</span>';
         refreshBtn.disabled = false;
-        
+
         // Tampilkan error message
         document.getElementById('errorTitle').textContent = 'Kesalahan Memuat Data';
         const msg = (error && error.message) ? error.message : 'Tidak dapat terhubung ke server. Coba refresh halaman.';
-        const extra = `
 
-Tips cepat:
-1) Buka URL GAS di browser: ${GAS_URL_PRIMARY}?action=ping
-2) Jika muncul login/permission, berarti Web App belum publik (Anyone).
-3) Untuk Chrome Android, gunakan URL hasil redirect (domain script.googleusercontent.com).`;
+        const baseHint = (localStorage.getItem('fg_dash_last_good_base_v1') || '').trim() || (typeof GAS_URL_GUC !== 'undefined' ? GAS_URL_GUC : '') || GAS_URL_EXEC;
+
+        const extra =
+            '\n\nTips cepat:' +
+            '\n1) Buka URL GAS di browser: ' + baseHint + (baseHint.includes('?') ? '&' : '?') + 'action=ping' +
+            '\n2) Jika muncul login/permission, berarti Web App belum publik (Anyone).' +
+            '\n3) Untuk Chrome Android, paling stabil pakai URL domain script.googleusercontent.com (GAS_URL_GUC).';
+
         document.getElementById('errorDetail').textContent = msg + extra;
         document.getElementById('errorMessage').classList.remove('hidden');
-        
-        setConnectionState('error');
 
-    }
+        setConnectionState('error');
+        }
     
     // Render dashboard dengan data
     function renderDashboard() {
@@ -931,7 +919,7 @@ Tips cepat:
                               region.percentage >= 50 ? 'amber' : 'red';
             
             row.innerHTML = `
-                <td class="py-3 px-4">
+                <td class="py-3 px-4 col-name">
                     <div class="font-medium text-gray-800 flex items-center">
                         <i class="fas fa-map-marker-alt text-gray-400 mr-2"></i>
                         ${region.name}
@@ -998,8 +986,8 @@ Tips cepat:
                                   unit.percentage >= 50 ? 'bg-amber-500' : 'bg-red-500';
             
             row.innerHTML = `
-                <td class="py-3 px-4 font-medium text-gray-800">${unit.name}</td>
-                <td class="py-3 px-4 text-gray-600">${unit.region || 'N/A'}</td>
+                <td class="py-3 px-4 font-medium text-gray-800 col-name">${unit.name}</td>
+                <td class="py-3 px-4 text-gray-600 col-name">${unit.region || 'N/A'}</td>
                 <td class="py-3 px-4">
                     <div class="flex items-center">
                         <div class="w-full bg-gray-200 rounded-full h-2.5 mr-3">
