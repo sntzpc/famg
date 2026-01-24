@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Pendaftaran Peserta</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --primary-color: #3b82f6;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --danger-color: #ef4444;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8fafc;
+        }
+        
+        .progress-bar {
+            height: 10px;
+            border-radius: 5px;
+            overflow: hidden;
+            background-color: #e5e7eb;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            transition: width 0.5s ease-in-out;
+        }
+        
+        .region-card:hover {
+            transform: translateY(-5px);
+            transition: transform 0.3s ease;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+        
+        .unit-row:hover {
+            background-color: #f8fafc;
+        }
+        
+        .highlight {
+            animation: highlight 2s ease;
+        }
+        
+        @keyframes highlight {
+            0% { background-color: rgba(59, 130, 246, 0.1); }
+            100% { background-color: transparent; }
+        }
+        
+        .skeleton {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: loading 1.5s infinite;
+        }
+        
+        @keyframes loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .tab-button.active {
+            border-bottom: 3px solid #3b82f6;
+            color: #3b82f6;
+            font-weight: 600;
+        }
+        
+        .scrollbar-custom::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .scrollbar-custom::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        
+        .scrollbar-custom::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 10px;
+        }
+        
+        .scrollbar-custom::-webkit-scrollbar-thumb:hover {
+            background: #a1a1a1;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 0;
+            width: 90%;
+            max-width: 800px;
+            border-radius: 10px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: modalopen 0.3s;
+        }
+        
+        @keyframes modalopen {
+            from {opacity: 0; transform: translateY(-50px);}
+            to {opacity: 1; transform: translateY(0);}
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-md sticky top-0 z-50">
+        <div class="container mx-auto px-4 py-3">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="flex items-center space-x-3 mb-3 md:mb-0">
+                    <div class="bg-blue-600 p-2 rounded-lg">
+                        <i class="fas fa-users text-white text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold text-gray-800">Dashboard Pendaftaran Peserta</h1>
+                        <p class="text-sm text-gray-600">Monitoring Progress Pendaftaran</p>
+                    </div>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <div class="flex items-center space-x-2 bg-blue-50 px-3 py-2 rounded-lg">
+                        <i class="fas fa-calendar-alt text-blue-600"></i>
+                        <span id="currentDate" class="text-sm text-gray-700">Loading...</span>
+                    </div>
+                    <button id="refreshBtn" class="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition duration-200">
+                        <i class="fas fa-sync-alt"></i>
+                        <span>Refresh Data</span>
+                    </button>
+                    <div class="text-xs px-3 py-1 bg-green-100 text-green-800 rounded-full flex items-center">
+                        <i class="fas fa-circle text-xs mr-1"></i>
+                        <span>Google Sheets Connected</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto px-4 py-6">
+        <!-- Loading Skeleton -->
+        <div id="loadingSkeleton" class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div class="bg-white rounded-xl shadow p-6">
+                    <div class="skeleton h-8 w-1/2 mb-4"></div>
+                    <div class="skeleton h-10 w-3/4"></div>
+                </div>
+                <div class="bg-white rounded-xl shadow p-6">
+                    <div class="skeleton h-8 w-1/2 mb-4"></div>
+                    <div class="skeleton h-10 w-3/4"></div>
+                </div>
+                <div class="bg-white rounded-xl shadow p-6">
+                    <div class="skeleton h-8 w-1/2 mb-4"></div>
+                    <div class="skeleton h-10 w-3/4"></div>
+                </div>
+                <div class="bg-white rounded-xl shadow p-6">
+                    <div class="skeleton h-8 w-1/2 mb-4"></div>
+                    <div class="skeleton h-10 w-3/4"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard Content (akan diisi dengan JavaScript) -->
+        <div id="dashboardContent" class="hidden">
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <!-- Card 1: Total Staff -->
+                <div class="bg-white rounded-xl shadow p-6 border-l-4 border-blue-500">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-gray-500 text-sm">Total Staff</p>
+                            <h3 id="totalStaff" class="text-3xl font-bold text-gray-800 mt-1">0</h3>
+                        </div>
+                        <div class="bg-blue-100 p-3 rounded-lg">
+                            <i class="fas fa-user-tie text-blue-600 text-xl"></i>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-sm text-gray-500">
+                        <i class="fas fa-info-circle mr-1"></i> Jumlah seluruh staff
+                    </div>
+                </div>
+                
+                <!-- Card 2: Sudah Mendaftar -->
+                <div class="bg-white rounded-xl shadow p-6 border-l-4 border-green-500">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-gray-500 text-sm">Sudah Mendaftar</p>
+                            <h3 id="registeredCount" class="text-3xl font-bold text-green-600 mt-1">0</h3>
+                        </div>
+                        <div class="bg-green-100 p-3 rounded-lg">
+                            <i class="fas fa-user-check text-green-600 text-xl"></i>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-500">Progress Pendaftaran</span>
+                            <span id="registrationRate" class="font-semibold">0%</span>
+                        </div>
+                        <div class="progress-bar mt-1">
+                            <div id="progressFill" class="progress-fill bg-green-500" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Card 3: Belum Mendaftar -->
+                <div class="bg-white rounded-xl shadow p-6 border-l-4 border-amber-500">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-gray-500 text-sm">Belum Mendaftar</p>
+                            <h3 id="unregisteredCount" class="text-3xl font-bold text-amber-600 mt-1">0</h3>
+                        </div>
+                        <div class="bg-amber-100 p-3 rounded-lg">
+                            <i class="fas fa-user-clock text-amber-600 text-xl"></i>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-sm text-gray-500">
+                        <i class="fas fa-exclamation-triangle mr-1"></i> Perlu tindak lanjut
+                    </div>
+                </div>
+                
+                <!-- Card 4: Region Aktif -->
+                <div class="bg-white rounded-xl shadow p-6 border-l-4 border-purple-500">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-gray-500 text-sm">Region Aktif</p>
+                            <h3 id="activeRegions" class="text-3xl font-bold text-purple-600 mt-1">0</h3>
+                        </div>
+                        <div class="bg-purple-100 p-3 rounded-lg">
+                            <i class="fas fa-map-marker-alt text-purple-600 text-xl"></i>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-sm text-gray-500">
+                        <i class="fas fa-location-dot mr-1"></i> Region dengan peserta
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Left Column: Region & Unit Progress -->
+                <div class="lg:col-span-2 space-y-8">
+                    <!-- Region Progress -->
+                    <div class="bg-white rounded-xl shadow">
+                        <div class="border-b px-6 py-4">
+                            <h2 class="text-xl font-bold text-gray-800 flex items-center">
+                                <i class="fas fa-globe-asia text-blue-500 mr-2"></i>
+                                Progress Pendaftaran per Region
+                            </h2>
+                            <p class="text-gray-600 text-sm">Grafik persentase pendaftaran berdasarkan region</p>
+                        </div>
+                        <div class="p-4">
+                            <div class="overflow-x-auto">
+                                <table class="w-full">
+                                    <thead>
+                                        <tr class="border-b">
+                                            <th class="text-left py-3 px-4 text-gray-700 font-medium">Region</th>
+                                            <th class="text-left py-3 px-4 text-gray-700 font-medium">Progress</th>
+                                            <th class="text-left py-3 px-4 text-gray-700 font-medium">Peserta</th>
+                                            <th class="text-left py-3 px-4 text-gray-700 font-medium">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="regionTable">
+                                        <!-- Data region akan dimasukkan di sini -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Unit Progress -->
+                    <div class="bg-white rounded-xl shadow">
+                        <div class="border-b px-6 py-4">
+                            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                                <div>
+                                    <h2 class="text-xl font-bold text-gray-800 flex items-center">
+                                        <i class="fas fa-building text-blue-500 mr-2"></i>
+                                        Progress Pendaftaran per Unit
+                                    </h2>
+                                    <p class="text-gray-600 text-sm">Detail pendaftaran berdasarkan unit kerja</p>
+                                </div>
+                                <div class="w-full md:w-auto">
+                                    <select id="regionFilter" class="w-full bg-gray-50 border border-gray-300 text-gray-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5">
+                                        <option value="all">Semua Region</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="p-4">
+                            <div class="overflow-x-auto">
+                                <table class="w-full">
+                                    <thead>
+                                        <tr class="border-b">
+                                            <th class="text-left py-3 px-4 text-gray-700 font-medium">Unit</th>
+                                            <th class="text-left py-3 px-4 text-gray-700 font-medium">Region</th>
+                                            <th class="text-left py-3 px-4 text-gray-700 font-medium">Progress</th>
+                                            <th class="text-left py-3 px-4 text-gray-700 font-medium">Detail</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="unitTable">
+                                        <!-- Data unit akan dimasukkan di sini -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Right Column: Participants Details -->
+                <div class="space-y-8">
+                    <!-- Tab Navigation -->
+                    <div class="bg-white rounded-xl shadow overflow-hidden">
+                        <div class="flex border-b">
+                            <button id="tabRegistered" class="tab-button flex-1 px-4 py-3 font-medium text-gray-700 hover:text-blue-600 hover:bg-gray-50 text-center active">
+                                <i class="fas fa-user-check mr-2"></i>Sudah Mendaftar
+                            </button>
+                            <button id="tabUnregistered" class="tab-button flex-1 px-4 py-3 font-medium text-gray-700 hover:text-blue-600 hover:bg-gray-50 text-center">
+                                <i class="fas fa-user-clock mr-2"></i>Belum Mendaftar
+                            </button>
+                        </div>
+                        
+                        <!-- Registered Participants -->
+                        <div id="registeredSection" class="tab-content active">
+                            <div class="p-4">
+                                <div class="mb-4">
+                                    <div class="relative">
+                                        <input type="text" id="searchRegistered" placeholder="Cari peserta (nama, NIK, region, unit)..." class="w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-3 pl-10">
+                                        <div class="absolute left-3 top-3.5">
+                                            <i class="fas fa-search text-gray-400"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="overflow-y-auto max-h-96 pr-2 scrollbar-custom">
+                                    <div id="registeredList">
+                                        <!-- Daftar peserta terdaftar akan dimasukkan di sini -->
+                                    </div>
+                                </div>
+                                <div class="text-center mt-4">
+                                    <p class="text-sm text-gray-500">
+                                        <span id="registeredCountBadge" class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">0</span>
+                                        peserta terdaftar
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Unregistered Participants -->
+                        <div id="unregisteredSection" class="tab-content">
+                            <div class="p-4">
+                                <div class="mb-4">
+                                    <div class="relative">
+                                        <input type="text" id="searchUnregistered" placeholder="Cari staff (nama, NIK, region, unit)..." class="w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-3 pl-10">
+                                        <div class="absolute left-3 top-3.5">
+                                            <i class="fas fa-search text-gray-400"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="overflow-y-auto max-h-96 pr-2 scrollbar-custom">
+                                    <div id="unregisteredList">
+                                        <!-- Daftar staff belum mendaftar akan dimasukkan di sini -->
+                                    </div>
+                                </div>
+                                <div class="text-center mt-4">
+                                    <p class="text-sm text-gray-500">
+                                        <span id="unregisteredCountBadge" class="bg-amber-100 text-amber-800 text-xs font-medium px-2.5 py-0.5 rounded">0</span>
+                                        staff belum mendaftar
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Quick Stats -->
+                    <div class="bg-gradient-to-r from-blue-500 to-blue-700 rounded-xl shadow text-white p-6">
+                        <h3 class="text-lg font-bold mb-4 flex items-center">
+                            <i class="fas fa-chart-line mr-2"></i>Statistik Cepat
+                        </h3>
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm">Region dengan pendaftaran tertinggi</span>
+                                <span id="topRegion" class="font-bold text-sm">-</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm">Unit dengan pendaftaran tertinggi</span>
+                                <span id="topUnit" class="font-bold text-sm">-</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm">Peserta dengan keluarga terbanyak</span>
+                                <span id="mostFamily" class="font-bold text-sm">-</span>
+                            </div>
+                        </div>
+                        <div class="mt-6 pt-4 border-t border-blue-400 text-xs">
+                            <p><i class="fas fa-lightbulb mr-2"></i> Target: 100% pendaftaran sebelum akhir bulan</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Last Updated -->
+                    <div class="bg-white rounded-xl shadow p-4 text-center">
+                        <p class="text-sm text-gray-600">
+                            <i class="fas fa-database mr-1"></i>
+                            Data diperbarui: <span id="lastUpdated" class="font-medium">-</span>
+                        </p>
+                        <button id="refreshStatsBtn" class="mt-2 text-blue-600 hover:text-blue-800 text-sm flex items-center justify-center w-full">
+                            <i class="fas fa-redo-alt mr-1"></i> Perbarui Statistik
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Error Message -->
+        <div id="errorMessage" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
+            <div class="flex items-center">
+                <i class="fas fa-exclamation-triangle mr-3"></i>
+                <div>
+                    <p class="font-bold" id="errorTitle">Error</p>
+                    <p id="errorDetail">Terjadi kesalahan saat memuat data.</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="mt-8 pt-6 border-t border-gray-200 text-center text-gray-500 text-sm">
+            <p>Dashboard Pendaftaran Peserta &copy; 2026 </p>
+            <p class="mt-1">Terhubung dengan Server: 
+                <span id="sheetStatus" class="font-medium text-green-600">
+                    <i class="fas fa-circle text-xs mr-1"></i>Aktif
+                </span>
+            </p>
+        </div>
+    </div>
+
+    <!-- Modal for Participant Details -->
+    <div id="participantModal" class="modal">
+        <div class="modal-content">
+            <div class="border-b px-6 py-4 flex justify-between items-center">
+                <h3 class="text-xl font-bold text-gray-800">Detail Peserta</h3>
+                <button id="closeModal" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="p-6">
+                <div id="modalContent">
+                    <!-- Detail peserta akan dimasukkan di sini -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script>
+    // =========================================================
+    // KONFIGURASI
+    // =========================================================
+    // ✅ Hardcode URL Web App Google Apps Script (gunakan URL "exec")
+    // Disarankan: pakai domain script.googleusercontent.com untuk akses dari GitHub/hosting statis.
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbzviU647KVt6EnN9PFHAuX1wSB5AkQ9W2AA4LcUPqj2B9bmbbmDMdatNv_79LxRiBr9QA/exec';
+
+    // =========================================================
+    // UTIL - JSONP (aman untuk cross-domain tanpa CORS)
+    // =========================================================
+    function jsonpCall(params, timeoutMs = 30000){
+        return new Promise((resolve, reject) => {
+            if(!GAS_URL || GAS_URL.includes('PASTE_')){
+                reject(new Error('GAS_URL belum diisi. Silakan paste URL Web App (exec) di variabel GAS_URL.'));
+                return;
+            }
+
+            const cb = '__fg_jsonp_' + Date.now() + '_' + Math.random().toString(16).slice(2);
+            const cleanUp = (scriptEl) => {
+                try{ delete window[cb]; }catch(e){ window[cb] = undefined; }
+                if(scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+            };
+
+            let script = null;
+            const timer = setTimeout(() => {
+                cleanUp(script);
+                reject(new Error('Timeout: Tidak dapat mengambil data dari server'));
+            }, timeoutMs);
+
+            window[cb] = (data) => {
+                clearTimeout(timer);
+                cleanUp(script);
+                resolve(data);
+            };
+
+            const q = new URLSearchParams({
+                ...params,
+                callback: cb,
+                _t: Date.now().toString()
+            });
+
+            script = document.createElement('script');
+            script.src = GAS_URL + (GAS_URL.includes('?') ? '&' : '?') + q.toString();
+            script.onerror = () => {
+                clearTimeout(timer);
+                cleanUp(script);
+                reject(new Error('Gagal memuat script JSONP. Pastikan URL GAS benar dan Web App dapat diakses publik.'));
+            };
+            document.head.appendChild(script);
+        });
+    }
+
+    // State aplikasi
+    let dashboardData = null;
+    let currentRegionFilter = 'all';
+    let currentTab = 'registered';
+    
+    // Inisialisasi saat halaman dimuat
+    document.addEventListener('DOMContentLoaded', function() {
+        // Set tanggal hari ini
+        const today = new Date();
+        document.getElementById('currentDate').textContent = today.toLocaleDateString('id-ID', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+        
+        // Event Listeners
+        document.getElementById('refreshBtn').addEventListener('click', fetchDashboardData);
+        document.getElementById('refreshStatsBtn').addEventListener('click', fetchDashboardData);
+        document.getElementById('regionFilter').addEventListener('change', function(e) {
+            currentRegionFilter = e.target.value;
+            renderUnitTable();
+        });
+        
+        // Tab events
+        document.getElementById('tabRegistered').addEventListener('click', function() {
+            switchTab('registered');
+        });
+        
+        document.getElementById('tabUnregistered').addEventListener('click', function() {
+            switchTab('unregistered');
+        });
+        
+        // Search events dengan debounce
+        let searchRegisteredTimeout;
+        document.getElementById('searchRegistered').addEventListener('input', function(e) {
+            clearTimeout(searchRegisteredTimeout);
+            searchRegisteredTimeout = setTimeout(() => {
+                searchParticipants(e.target.value, 'registered');
+            }, 300);
+        });
+        
+        let searchUnregisteredTimeout;
+        document.getElementById('searchUnregistered').addEventListener('input', function(e) {
+            clearTimeout(searchUnregisteredTimeout);
+            searchUnregisteredTimeout = setTimeout(() => {
+                searchParticipants(e.target.value, 'unregistered');
+            }, 300);
+        });
+        
+        // Modal events
+        document.getElementById('closeModal').addEventListener('click', function() {
+            document.getElementById('participantModal').style.display = 'none';
+        });
+        
+        // Tutup modal saat klik di luar
+        window.addEventListener('click', function(event) {
+            const modal = document.getElementById('participantModal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
+        
+        // Muat data pertama kali
+        fetchDashboardData();
+        
+        // Auto-refresh setiap 2 menit
+        setInterval(fetchDashboardData, 2 * 60 * 1000);
+    });
+    
+    // Fungsi untuk beralih tab
+    function switchTab(tabName) {
+        currentTab = tabName;
+        
+        // Update tab buttons
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        // Hide all tab contents
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('active');
+        });
+        
+        // Show selected tab
+        if (tabName === 'registered') {
+            document.getElementById('tabRegistered').classList.add('active');
+            document.getElementById('registeredSection').classList.add('active');
+        } else {
+            document.getElementById('tabUnregistered').classList.add('active');
+            document.getElementById('unregisteredSection').classList.add('active');
+        }
+    }
+    
+    // Fetch data dari Google Apps Script
+    function fetchDashboardData() {
+        // Tampilkan loading skeleton
+        document.getElementById('loadingSkeleton').classList.remove('hidden');
+        document.getElementById('dashboardContent').classList.add('hidden');
+        document.getElementById('errorMessage').classList.add('hidden');
+        
+        // Update tombol refresh
+        const refreshBtn = document.getElementById('refreshBtn');
+        const originalContent = refreshBtn.innerHTML;
+        refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Memuat...</span>';
+        refreshBtn.disabled = true;
+        
+        // Panggil GAS (JSONP) - aman tanpa CORS
+        jsonpCall({ action: 'dashboard' }, 30000)
+            .then(handleDashboardData)
+            .catch(handleError);
+    }
+    
+    // Handle data yang diterima
+    function handleDashboardData(response) {
+        console.log('Response received:', response);
+        
+        // Sembunyikan loading skeleton
+        document.getElementById('loadingSkeleton').classList.add('hidden');
+        
+        // Reset tombol refresh
+        const refreshBtn = document.getElementById('refreshBtn');
+        refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> <span>Refresh Data</span>';
+        refreshBtn.disabled = false;
+        
+        // Cek jika response null atau undefined
+        if (!response) {
+            console.error('Response is null or undefined');
+            throw new Error('Server tidak merespon. Coba refresh halaman.');
+        }
+        
+        if (response.success) {
+            dashboardData = response.data;
+            
+            // Tampilkan dashboard content
+            document.getElementById('dashboardContent').classList.remove('hidden');
+            
+            // Render semua komponen
+            renderDashboard();
+            
+            // Update waktu terakhir diperbarui
+            const lastUpdated = new Date(response.lastUpdated);
+            document.getElementById('lastUpdated').textContent = 
+                lastUpdated.toLocaleTimeString('id-ID') + ' WIB';
+                
+            // Update status
+            document.getElementById('sheetStatus').innerHTML = 
+                '<i class="fas fa-circle text-xs mr-1 text-green-500"></i>Aktif';
+            document.getElementById('sheetStatus').className = 'font-medium text-green-600';
+                
+            // Highlight perubahan
+            document.querySelectorAll('.highlight').forEach(el => el.classList.remove('highlight'));
+            setTimeout(() => {
+                document.querySelectorAll('.bg-white').forEach(card => {
+                    card.classList.add('highlight');
+                });
+            }, 100);
+        } else {
+            const msg = response?.error || response?.message || 'Gagal mengambil data dari server.';
+            throw new Error(msg);
+        }
+    }
+    
+    // Handle error
+    function handleError(error) {
+        console.error('Error fetching data:', error);
+        
+        // Sembunyikan loading skeleton
+        document.getElementById('loadingSkeleton').classList.add('hidden');
+        
+        // Reset tombol refresh
+        const refreshBtn = document.getElementById('refreshBtn');
+        refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> <span>Refresh Data</span>';
+        refreshBtn.disabled = false;
+        
+        // Tampilkan error message
+        document.getElementById('errorTitle').textContent = 'Kesalahan Memuat Data';
+        document.getElementById('errorDetail').textContent = error.message || 'Tidak dapat terhubung ke server. Coba refresh halaman.';
+        document.getElementById('errorMessage').classList.remove('hidden');
+        
+        // Update status sheet
+        document.getElementById('sheetStatus').innerHTML = 
+            '<i class="fas fa-circle text-xs mr-1 text-red-500"></i>Error';
+        document.getElementById('sheetStatus').className = 'font-medium text-red-600';
+        
+    }
+    
+    // Render dashboard dengan data
+    function renderDashboard() {
+        if (!dashboardData) return;
+        
+        const { summary, regions, units, registeredParticipants, unregisteredStaff } = dashboardData;
+        
+        // Update summary cards
+        document.getElementById('totalStaff').textContent = summary.totalStaff.toLocaleString('id-ID');
+        document.getElementById('registeredCount').textContent = summary.registeredCount.toLocaleString('id-ID');
+        document.getElementById('unregisteredCount').textContent = summary.unregisteredCount.toLocaleString('id-ID');
+        document.getElementById('registrationRate').textContent = `${summary.registrationRate}%`;
+        document.getElementById('activeRegions').textContent = regions.length;
+        
+        // Update progress bar
+        const progressFill = document.getElementById('progressFill');
+        progressFill.style.width = `${summary.registrationRate}%`;
+        
+        // Update region filter dropdown
+        const regionFilter = document.getElementById('regionFilter');
+        regionFilter.innerHTML = '<option value="all">Semua Region</option>';
+        regions.forEach(region => {
+            const option = document.createElement('option');
+            option.value = region.name;
+            option.textContent = `${region.name} (${region.registered}/${region.total})`;
+            regionFilter.appendChild(option);
+        });
+        
+        // Render region table
+        renderRegionTable(regions);
+        
+        // Render unit table
+        renderUnitTable();
+        
+        // Render participant lists
+        renderRegisteredParticipants(registeredParticipants);
+        renderUnregisteredStaff(unregisteredStaff);
+        
+        // Update badges
+        document.getElementById('registeredCountBadge').textContent = registeredParticipants.length;
+        document.getElementById('unregisteredCountBadge').textContent = unregisteredStaff.length;
+        
+        // Update quick stats
+        updateQuickStats(regions, units, registeredParticipants);
+    }
+    
+    // Render tabel region
+    function renderRegionTable(regions) {
+        const regionTable = document.getElementById('regionTable');
+        regionTable.innerHTML = '';
+        
+        if (regions.length === 0) {
+            regionTable.innerHTML = `
+                <tr>
+                    <td colspan="4" class="py-8 text-center text-gray-500">
+                        <i class="fas fa-inbox text-3xl mb-2 block"></i>
+                        <p>Tidak ada data region</p>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        // Urutkan berdasarkan persentase tertinggi
+        const sortedRegions = [...regions].sort((a, b) => b.percentage - a.percentage);
+        
+        sortedRegions.forEach(region => {
+            const row = document.createElement('tr');
+            row.className = 'border-b hover:bg-gray-50';
+            
+            const percentageColor = region.percentage >= 80 ? 'bg-green-500' : 
+                                  region.percentage >= 50 ? 'bg-amber-500' : 'bg-red-500';
+            
+            const statusText = region.percentage >= 80 ? 'Baik' :
+                             region.percentage >= 50 ? 'Sedang' : 'Perlu Perhatian';
+            
+            const statusColor = region.percentage >= 80 ? 'green' :
+                              region.percentage >= 50 ? 'amber' : 'red';
+            
+            row.innerHTML = `
+                <td class="py-3 px-4">
+                    <div class="font-medium text-gray-800 flex items-center">
+                        <i class="fas fa-map-marker-alt text-gray-400 mr-2"></i>
+                        ${region.name}
+                    </div>
+                </td>
+                <td class="py-3 px-4">
+                    <div class="flex items-center">
+                        <div class="w-full bg-gray-200 rounded-full h-2.5 mr-3">
+                            <div class="h-2.5 rounded-full ${percentageColor}" style="width: ${region.percentage}%"></div>
+                        </div>
+                        <span class="text-sm font-medium">${parseFloat(region.percentage).toFixed(1)}%</span>
+                    </div>
+                </td>
+                <td class="py-3 px-4">
+                    <span class="font-medium">${region.registered}</span>
+                    <span class="text-gray-500"> / ${region.total}</span>
+                </td>
+                <td class="py-3 px-4">
+                    <span class="px-2 py-1 bg-${statusColor}-100 text-${statusColor}-800 text-xs font-medium rounded-full">
+                        ${statusText}
+                    </span>
+                </td>
+            `;
+            regionTable.appendChild(row);
+        });
+    }
+    
+    // Render tabel unit
+    function renderUnitTable() {
+        if (!dashboardData) return;
+        
+        const unitTable = document.getElementById('unitTable');
+        unitTable.innerHTML = '';
+        
+        let filteredUnits = dashboardData.units;
+        
+        // Filter berdasarkan region jika dipilih
+        if (currentRegionFilter !== 'all') {
+            filteredUnits = filteredUnits.filter(unit => 
+                unit.region && unit.region.toLowerCase() === currentRegionFilter.toLowerCase()
+            );
+        }
+        
+        if (filteredUnits.length === 0) {
+            unitTable.innerHTML = `
+                <tr>
+                    <td colspan="4" class="py-8 text-center text-gray-500">
+                        <i class="fas fa-inbox text-3xl mb-2 block"></i>
+                        <p>Tidak ada data unit untuk region ini</p>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        // Urutkan berdasarkan persentase tertinggi
+        const sortedUnits = [...filteredUnits].sort((a, b) => b.percentage - a.percentage);
+        
+        sortedUnits.forEach(unit => {
+            const row = document.createElement('tr');
+            row.className = 'unit-row border-b hover:bg-gray-50';
+            
+            const percentageColor = unit.percentage >= 80 ? 'bg-green-500' : 
+                                  unit.percentage >= 50 ? 'bg-amber-500' : 'bg-red-500';
+            
+            row.innerHTML = `
+                <td class="py-3 px-4 font-medium text-gray-800">${unit.name}</td>
+                <td class="py-3 px-4 text-gray-600">${unit.region || 'N/A'}</td>
+                <td class="py-3 px-4">
+                    <div class="flex items-center">
+                        <div class="w-full bg-gray-200 rounded-full h-2.5 mr-3">
+                            <div class="h-2.5 rounded-full ${percentageColor}" style="width: ${unit.percentage}%"></div>
+                        </div>
+                        <span class="text-sm font-medium">${parseFloat(unit.percentage).toFixed(1)}%</span>
+                    </div>
+                </td>
+                <td class="py-3 px-4">
+                    <span class="font-medium">${unit.registered}</span>
+                    <span class="text-gray-500"> / ${unit.total}</span>
+                </td>
+            `;
+            unitTable.appendChild(row);
+        });
+    }
+    
+    // Render daftar peserta terdaftar
+    function renderRegisteredParticipants(participants) {
+        const registeredList = document.getElementById('registeredList');
+        
+        if (participants.length === 0) {
+            registeredList.innerHTML = `
+                <div class="text-center py-8 text-gray-500">
+                    <i class="fas fa-users text-3xl mb-2 block"></i>
+                    <p>Belum ada peserta yang terdaftar</p>
+                </div>
+            `;
+            return;
+        }
+        
+        registeredList.innerHTML = '';
+        
+        participants.forEach(participant => {
+            const participantCard = createParticipantCard(participant, true);
+            registeredList.appendChild(participantCard);
+        });
+    }
+    
+    // Render daftar staff belum mendaftar
+    function renderUnregisteredStaff(staff) {
+        const unregisteredList = document.getElementById('unregisteredList');
+        
+        if (staff.length === 0) {
+            unregisteredList.innerHTML = `
+                <div class="text-center py-8 text-gray-500">
+                    <i class="fas fa-check-circle text-3xl mb-2 block text-green-500"></i>
+                    <p>Semua staff sudah terdaftar!</p>
+                </div>
+            `;
+            return;
+        }
+        
+        unregisteredList.innerHTML = '';
+        
+        staff.forEach(person => {
+            const staffCard = createStaffCard(person);
+            unregisteredList.appendChild(staffCard);
+        });
+    }
+    
+    // Buat kartu peserta
+    function createParticipantCard(participant, isRegistered = true) {
+        const card = document.createElement('div');
+        card.className = 'bg-gray-50 rounded-lg p-4 mb-3 hover:bg-gray-100 cursor-pointer transition duration-200';
+        
+        // Parse family data jika ada
+        let familyCount = 0;
+        try {
+            if (participant.family_json) {
+                const family = JSON.parse(participant.family_json);
+                familyCount = Array.isArray(family) ? family.length : 0;
+            }
+        } catch (e) {
+            console.warn('Error parsing family_json:', e);
+        }
+        
+        card.innerHTML = `
+            <div class="flex justify-between items-start">
+                <div class="flex-1">
+                    <h4 class="font-bold text-gray-800 truncate">${participant.name || 'N/A'}</h4>
+                    <div class="flex flex-wrap items-center mt-1 gap-2">
+                        <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">${participant.nik || 'N/A'}</span>
+                        <span class="text-xs text-gray-600">${participant.region || 'N/A'}</span>
+                        <span class="text-xs text-gray-600">${participant.unit || 'N/A'}</span>
+                    </div>
+                </div>
+                <div class="text-right ml-2">
+                    <div class="text-xs font-medium ${isRegistered ? 'text-green-600 bg-green-100' : 'text-amber-600 bg-amber-100'} px-2 py-1 rounded">
+                        ${isRegistered ? 'Terdaftar' : 'Belum Daftar'}
+                    </div>
+                    ${familyCount > 0 ? 
+                        `<div class="text-xs text-gray-500 mt-1">
+                            <i class="fas fa-users mr-1"></i>${familyCount} anggota
+                        </div>` : ''
+                    }
+                </div>
+            </div>
+        `;
+        
+        // Tambahkan event click untuk menampilkan detail
+        if (isRegistered) {
+            card.addEventListener('click', () => showParticipantDetails(participant));
+        }
+        
+        return card;
+    }
+    
+    // Buat kartu staff
+    function createStaffCard(staff) {
+        const card = document.createElement('div');
+        card.className = 'bg-gray-50 rounded-lg p-4 mb-3';
+        
+        card.innerHTML = `
+            <div class="flex justify-between items-start">
+                <div class="flex-1">
+                    <h4 class="font-bold text-gray-800 truncate">${staff.name || 'N/A'}</h4>
+                    <div class="flex flex-wrap items-center mt-1 gap-2">
+                        <span class="text-xs bg-gray-200 text-gray-800 px-2 py-1 rounded">${staff.nik || 'N/A'}</span>
+                        <span class="text-xs text-gray-600">${staff.region || 'N/A'}</span>
+                        <span class="text-xs text-gray-600">${staff.unit || 'N/A'}</span>
+                    </div>
+                    <div class="mt-2 text-sm text-gray-600 truncate">
+                        <i class="fas fa-briefcase mr-1"></i>${staff.poisition || staff.position || 'Tidak ada data'}
+                    </div>
+                </div>
+                <div class="ml-2">
+                    <div class="text-xs font-medium text-amber-600 bg-amber-100 px-2 py-1 rounded">Belum Daftar</div>
+                </div>
+            </div>
+        `;
+        
+        return card;
+    }
+    
+    // Fungsi pencarian peserta
+    function searchParticipants(searchTerm, type) {
+        if (!searchTerm.trim()) {
+            // Jika pencarian kosong, tampilkan semua data
+            if (type === 'registered' && dashboardData) {
+                renderRegisteredParticipants(dashboardData.registeredParticipants);
+            } else if (type === 'unregistered' && dashboardData) {
+                renderUnregisteredStaff(dashboardData.unregisteredStaff);
+            }
+            return;
+        }
+        if (!dashboardData) return;
+
+        const term = searchTerm.toLowerCase().trim();
+        const matches = (obj) => {
+            const fields = [obj.nik, obj.name, obj.region, obj.unit, obj.poisition, obj.position, obj.status];
+            return fields.some(v => String(v || '').toLowerCase().includes(term));
+        };
+
+        if (type === 'registered') {
+            const filtered = (dashboardData.registeredParticipants || []).filter(matches);
+            const registeredList = document.getElementById('registeredList');
+            registeredList.innerHTML = '';
+
+            if (!filtered.length) {
+                registeredList.innerHTML = `
+                    <div class="text-center py-8 text-gray-500">
+                        <i class="fas fa-search text-3xl mb-2 block"></i>
+                        <p>Tidak ditemukan peserta dengan kata kunci "${searchTerm}"</p>
+                    </div>
+                `;
+                return;
+            }
+            filtered.forEach(p => registeredList.appendChild(createParticipantCard(p, true)));
+        } else {
+            const filtered = (dashboardData.unregisteredStaff || []).filter(matches);
+            const unregisteredList = document.getElementById('unregisteredList');
+            unregisteredList.innerHTML = '';
+
+            if (!filtered.length) {
+                unregisteredList.innerHTML = `
+                    <div class="text-center py-8 text-gray-500">
+                        <i class="fas fa-search text-3xl mb-2 block"></i>
+                        <p>Tidak ditemukan staff dengan kata kunci "${searchTerm}"</p>
+                    </div>
+                `;
+                return;
+            }
+            filtered.forEach(s => unregisteredList.appendChild(createStaffCard(s)));
+        }
+    }
+    
+    // Tampilkan modal dengan detail peserta
+    function showParticipantDetails(participant) {
+        const modalContent = document.getElementById('modalContent');
+        
+        // Parse family data
+        let familyList = [];
+        try {
+            if (participant.family_json) {
+                const parsed = JSON.parse(participant.family_json);
+                familyList = Array.isArray(parsed) ? parsed : [];
+            }
+        } catch (e) {
+            console.warn('Error parsing family_json:', e);
+        }
+        
+        modalContent.innerHTML = `
+            <div class="space-y-6">
+                <!-- Header -->
+                <div class="flex items-start space-x-4">
+                    <div class="bg-blue-100 p-4 rounded-lg">
+                        <i class="fas fa-user text-blue-600 text-2xl"></i>
+                    </div>
+                    <div class="flex-1">
+                        <h4 class="text-xl font-bold text-gray-800">${participant.name || 'N/A'}</h4>
+                        <div class="flex flex-wrap items-center mt-1 gap-2">
+                            <span class="text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded">NIK: ${participant.nik || 'N/A'}</span>
+                            <span class="text-sm text-gray-600">${participant.region || 'N/A'}</span>
+                            <span class="text-sm text-gray-600">${participant.unit || 'N/A'}</span>
+                        </div>
+                        <div class="mt-2">
+                            <span class="px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full">
+                                <i class="fas fa-check-circle mr-1"></i>Telah Mendaftar
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Informasi Keluarga -->
+                <div>
+                    <h5 class="font-bold text-gray-700 mb-3 flex items-center">
+                        <i class="fas fa-users mr-2 text-blue-500"></i> Informasi Keluarga
+                    </h5>
+                    ${familyList.length > 0 ? 
+                        `<div class="bg-gray-50 rounded-lg p-4">
+                            <ul class="space-y-2">
+                                ${familyList.map(member => `<li class="flex items-center">
+                                    <i class="fas fa-user-circle mr-3 text-gray-400"></i>
+                                    <span class="text-gray-700">${member}</span>
+                                </li>`).join('')}
+                            </ul>
+                            <div class="mt-3 text-sm text-gray-500">
+                                Total: ${familyList.length} anggota keluarga
+                            </div>
+                        </div>` :
+                        `<div class="bg-gray-50 rounded-lg p-4 text-center text-gray-500">
+                            <i class="fas fa-info-circle mr-1"></i> Tidak ada data keluarga
+                        </div>`
+                    }
+                </div>
+                
+                <!-- Metadata -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <h6 class="text-sm font-medium text-gray-500 mb-1">Status Staff</h6>
+                        <p class="font-medium">${participant.is_staff === 'TRUE' ? 'Ya' : 'Tidak'}</p>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <h6 class="text-sm font-medium text-gray-500 mb-1">Region</h6>
+                        <p class="font-medium">${participant.region || 'N/A'}</p>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <h6 class="text-sm font-medium text-gray-500 mb-1">Unit</h6>
+                        <p class="font-medium">${participant.unit || 'N/A'}</p>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <h6 class="text-sm font-medium text-gray-500 mb-1">Tanggal Pendaftaran</h6>
+                        <p class="font-medium">${new Date().toLocaleDateString('id-ID')}</p>
+                    </div>
+                </div>
+                
+                <!-- Actions -->
+                <div class="pt-4 border-t">
+                    <p class="text-sm text-gray-500 mb-4">
+                        <i class="fas fa-info-circle mr-1"></i> Data ini berasal dari Google Sheets
+                    </p>
+                    <div class="flex justify-end space-x-3">
+                        <button onclick="window.print()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">
+                            <i class="fas fa-print mr-1"></i> Cetak
+                        </button>
+                        <button onclick="document.getElementById('participantModal').style.display='none'" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                            <i class="fas fa-times mr-1"></i> Tutup
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.getElementById('participantModal').style.display = 'block';
+    }
+    
+    // Update quick stats
+    function updateQuickStats(regions, units, participants) {
+        // Region dengan pendaftaran tertinggi
+        const topRegion = [...regions].sort((a, b) => b.percentage - a.percentage)[0];
+        document.getElementById('topRegion').textContent = topRegion ? 
+            `${topRegion.name} (${topRegion.percentage}%)` : '-';
+        
+        // Unit dengan pendaftaran tertinggi
+        const topUnit = [...units].sort((a, b) => b.percentage - a.percentage)[0];
+        document.getElementById('topUnit').textContent = topUnit ? 
+            `${topUnit.name} (${topUnit.percentage}%)` : '-';
+        
+        // Peserta dengan keluarga terbanyak
+        let mostFamilyParticipant = null;
+        let maxFamilyCount = 0;
+        
+        participants.forEach(participant => {
+            try {
+                if (participant.family_json) {
+                    const family = JSON.parse(participant.family_json);
+                    const familyCount = Array.isArray(family) ? family.length : 0;
+                    if (familyCount > maxFamilyCount) {
+                        maxFamilyCount = familyCount;
+                        mostFamilyParticipant = participant;
+                    }
+                }
+            } catch (e) {
+                // Ignore parsing errors
+            }
+        });
+        
+        document.getElementById('mostFamily').textContent = mostFamilyParticipant ? 
+            `${mostFamilyParticipant.name ? mostFamilyParticipant.name.substring(0, 15) + (mostFamilyParticipant.name.length > 15 ? '...' : '') : 'N/A'} (${maxFamilyCount})` : '-';
+    }
+</script>
+</body>
+</html>
