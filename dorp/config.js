@@ -39,6 +39,14 @@
     api: {
       url: "https://script.google.com/macros/s/AKfycbyDxSfR75hzhMgchdX8M853BS6HEFjjLBdABf53SU12kpB4_eqxIcMXY-gaYZew26JO/exec"
     },
+    // ✅ Bypass Login (opsional)
+    // Jika bypass=true, halaman doorprize langsung login otomatis tanpa input form.
+    // Default akun backend (lihat README.txt): operator/operator123 atau admin/admin123
+    auth: {
+      bypass: true,
+      username: "operator",
+      password: "operator123"
+    },
     app: {
       notificationTimeout: 4500,
       brand: {

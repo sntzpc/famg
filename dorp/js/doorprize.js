@@ -105,7 +105,45 @@
     try { await FGAPI.auth.me(token); return true; } catch { return false; }
   }
 
-  async function login() {
+  
+  // -------- Bypass Login (opsional) --------
+  // Jika AppConfig.auth.bypass = true, aplikasi akan login otomatis memakai kredensial yang di-hardcode
+  // di config.js, sehingga operator tidak perlu mengetik username/password di layar.
+  async function autoLoginBypass(){
+    try{
+      const a = window.AppConfig?.auth;
+      if(!a || !a.bypass) return false;
+      if(token) return await ensureLogged();
+
+      const u = String(a.username || '').trim();
+      const p = String(a.password || '');
+      if(!u || !p) return false;
+
+      const r = await FGAPI.auth.login(u, p);
+      token = r.token;
+      localStorage.setItem(KEY, token);
+
+      // sukses -> tampilkan app
+      $('#login')?.classList.add('hidden');
+      $('#app')?.classList.remove('hidden');
+      $('#btn-logout')?.classList.remove('hidden');
+
+      await loadPrizes();
+      await buildPoolNames();
+      await refreshHistory();
+
+      renderStageWinners();
+      setStage('Doorprize', 'Idle');
+
+      utils.showNotification('Login otomatis (bypass) berhasil', 'success');
+      return true;
+    }catch(err){
+      console.warn('[bypass] autoLogin failed:', err);
+      return false;
+    }
+  }
+
+async function login() {
     const u = $('#username').value.trim();
     const p = $('#password').value;
     try {
@@ -602,7 +640,7 @@ function renderStageWinners() {
     $('#btn-save-stage')?.addEventListener('click', saveStageToHistoryUI);
 
     // boot
-    if (await ensureLogged()) {
+    if (await ensureLogged() || await autoLoginBypass()) {
       $('#login').classList.add('hidden');
       $('#app').classList.remove('hidden');
       $('#btn-logout').classList.remove('hidden');

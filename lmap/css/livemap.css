@@ -12,7 +12,7 @@
 .lm-pin-inner{width:8px;height:8px;border-radius:999px;background:rgba(255,255,255,.95)}
 @media (max-width: 1023px){
   /* bottom sheet panel (mobile) */
-  #panel{position:fixed;inset:0;z-index:60;padding:0;background:rgba(15,23,42,.35);backdrop-filter:blur(2px)}
+  #panel{position:fixed;inset:0;z-index:10000;padding:0;background:rgba(15,23,42,.35);backdrop-filter:blur(2px)}
   #panel>div{
     position:absolute;
     left:0;right:0;bottom:0;
