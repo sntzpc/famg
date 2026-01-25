@@ -41,6 +41,11 @@ function handle_(e){
 
     log_(action, true, Date.now()-t0, result && result.error ? result.error : '');
 
+    // transport=pm: kirim balik lewat postMessage (untuk fallback Chrome Mobile)
+    if(String(p.transport||'') === 'pm'){
+      return pm_(result, String(p.cbid||''));
+    }
+
     if(callback){
       return jsonp_(callback, result);
     }
@@ -124,6 +129,22 @@ function jsonp_(cb, obj){
   const txt = safeCb + '(' + JSON.stringify(obj) + ');';
   return ContentService.createTextOutput(txt)
     .setMimeType(ContentService.MimeType.JAVASCRIPT);
+}
+
+
+function pm_(obj, cbid){
+  // Allow embedded in IFRAME (dibutuhkan untuk transport=pm)
+  const payload = JSON.stringify(obj);
+  const html =
+    '<!doctype html><html><head><meta charset="utf-8"></head><body>' +
+    '<script>(function(){' +
+    'var data=' + payload + ';' +
+    'try{ parent.postMessage({__fg_pm:true, cbid:' + JSON.stringify(cbid) + ', data:data}, "*"); }catch(e){}' +
+    '})();</script>' +
+    '</body></html>';
+  return HtmlService
+    .createHtmlOutput(html)
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 /* =========================

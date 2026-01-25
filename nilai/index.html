@@ -445,6 +445,8 @@ function apiJsonp(action, params={}, payload=null){
             q.set("payload", JSON.stringify(payload));
 }
     q.set("callback", cb);
+    // cache-bust (hindari cache/redirect issue di Chrome Mobile)
+    q.set("_", String(Date.now()));
 
     const url = GAS_URL + (GAS_URL.includes("?") ? "&" : "?") + q.toString();
 
@@ -474,10 +476,57 @@ function apiJsonp(action, params={}, payload=null){
       reject(new Error("Gagal memuat response JSONP"));
     };
 
-    document.body.appendChild(script);
+    (document.head || document.body || document.documentElement).appendChild(script);
   });
 }
 
+
+// Fallback transport via hidden IFRAME + postMessage (lebih kompatibel di Chrome Mobile)
+function apiPm(action, params={}, payload=null){
+  return new Promise((resolve,reject)=>{
+    const cbid = "FGPM_"+Math.random().toString(16).slice(2);
+    const q = new URLSearchParams();
+    q.set("action", action);
+    q.set("transport", "pm");
+    q.set("cbid", cbid);
+    if(state.session?.token) q.set("token", state.session.token);
+    for(const [k,v] of Object.entries(params||{})){ if(v!==undefined && v!==null) q.set(k, String(v)); }
+    if(payload!==null){
+      q.set("payload", JSON.stringify(payload));
+    }
+    // cache-bust
+    q.set("_", String(Date.now()));
+    const url = GAS_URL + (GAS_URL.includes("?") ? "&" : "?") + q.toString();
+
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;";
+    iframe.src = url;
+
+    const timeout = setTimeout(()=>{
+      cleanup();
+      reject(new Error("Timeout memanggil server (pm)"));
+    }, 20000);
+
+    function onMsg(ev){
+      const d = ev && ev.data;
+      if(!d || d.__fg_pm !== true) return;
+      if(d.cbid !== cbid) return;
+      cleanup();
+      const data = d.data;
+      if(data && data.ok) resolve(data);
+      else reject(new Error(data?.error || "Server error"));
+    }
+
+    function cleanup(){
+      clearTimeout(timeout);
+      window.removeEventListener("message", onMsg);
+      try{ iframe.remove(); }catch{}
+    }
+
+    window.addEventListener("message", onMsg);
+    (document.body || document.documentElement).appendChild(iframe);
+  });
+}
 // JSONP helper untuk payload besar (bypass limit URL dengan cara chunk)
 async function apiJsonpLarge(action, params={}, payloadObj=null){
   const payloadStr = payloadObj===null ? "" : JSON.stringify(payloadObj);
@@ -501,24 +550,36 @@ async function apiJsonpLarge(action, params={}, payloadObj=null){
 // ===== Config =====
 async function refreshConfig(){
   try{
+    // 1) Coba JSONP normal (script tag)
     const res = await apiJsonp("public.getConfig");
     state.config = res.config;
     saveLS();
     applyBranding();
     buildSelectors();
     toast("Config berhasil dimuat", "ok");
-  }catch(err){
-    if(!state.config){
-      state.config = {
-        title:"Penilaian Family Gathering",
-        event_id:"FG",
-        max_stars:5,
-        competitions:[]
-      };
+  }catch(err1){
+    try{
+      // 2) Fallback khusus Chrome Mobile: iframe + postMessage
+      const res2 = await apiPm("public.getConfig");
+      state.config = res2.config;
+      saveLS();
+      applyBranding();
+      buildSelectors();
+      toast("Config berhasil dimuat", "ok");
+      return;
+    }catch(err2){
+      if(!state.config){
+        state.config = {
+          title:"Penilaian Family Gathering",
+          event_id:"FG",
+          max_stars:5,
+          competitions:[]
+        };
+      }
+      applyBranding();
+      buildSelectors();
+      toast("Gagal memuat config server. Pakai cache/local.", "warn");
     }
-    applyBranding();
-    buildSelectors();
-    toast("Gagal memuat config server. Pakai cache/local.", "warn");
   }
 }
 
