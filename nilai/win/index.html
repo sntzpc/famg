@@ -21,35 +21,57 @@
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
 
   <style>
-    /* subtle animated background */
-    .bg-anim {
-      background: radial-gradient(1200px 600px at 10% 10%, rgba(59,130,246,.28), transparent 60%),
-                  radial-gradient(900px 500px at 90% 20%, rgba(16,185,129,.20), transparent 55%),
-                  radial-gradient(1100px 650px at 50% 100%, rgba(244,63,94,.18), transparent 60%),
-                  linear-gradient(180deg, #0b1220 0%, #050711 100%);
-      position: relative;
-      overflow: hidden;
-    }
-    .glow {
-      box-shadow: 0 0 0 1px rgba(255,255,255,.06), 0 20px 60px rgba(0,0,0,.55);
-    }
-    .shine {
-      position: relative;
-      overflow: hidden;
-    }
-    .shine:before {
-      content:"";
-      position:absolute; inset:-40% -60%;
-      background: linear-gradient(120deg, transparent 40%, rgba(255,255,255,.18) 50%, transparent 60%);
-      transform: translateX(-60%) rotate(8deg);
-      animation: shine 6.5s linear infinite;
-    }
-    @keyframes shine { 0%{transform:translateX(-60%) rotate(8deg)} 100%{transform:translateX(60%) rotate(8deg)} }
-    .pop { animation: pop .55s cubic-bezier(.2,.9,.2,1) both; }
-    @keyframes pop { from{transform:translateY(16px) scale(.98); opacity:0} to{transform:translateY(0) scale(1); opacity:1} }
-    .pulseRing { animation: ring 1.8s ease-in-out infinite; }
-    @keyframes ring { 0%,100%{transform:scale(1); opacity:.65} 50%{transform:scale(1.04); opacity:1} }
-  </style>
+  /* ✅ FIX SCROLL MOBILE:
+     body memakai class .bg-anim, tapi sebelumnya overflow:hidden mengunci scroll.
+     Ubah jadi hanya sembunyikan overflow X, dan izinkan scroll Y.
+  */
+
+  html, body{
+    height: auto;
+    min-height: 100%;
+  }
+
+  body{
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch; /* iOS smooth scroll */
+    touch-action: pan-y;               /* bantu gesture scroll di mobile */
+  }
+
+  /* subtle animated background */
+  .bg-anim {
+    background: radial-gradient(1200px 600px at 10% 10%, rgba(59,130,246,.28), transparent 60%),
+                radial-gradient(900px 500px at 90% 20%, rgba(16,185,129,.20), transparent 55%),
+                radial-gradient(1100px 650px at 50% 100%, rgba(244,63,94,.18), transparent 60%),
+                linear-gradient(180deg, #0b1220 0%, #050711 100%);
+    position: relative;
+
+    /* ❌ sebelumnya: overflow:hidden; (mengunci scroll) */
+    overflow-x: hidden;  /* ✅ tetap aman untuk efek background melebar */
+    overflow-y: visible; /* ✅ biarkan body yang handle scroll */
+  }
+
+  .glow {
+    box-shadow: 0 0 0 1px rgba(255,255,255,.06), 0 20px 60px rgba(0,0,0,.55);
+  }
+  .shine {
+    position: relative;
+    overflow: hidden;
+  }
+  .shine:before {
+    content:"";
+    position:absolute; inset:-40% -60%;
+    background: linear-gradient(120deg, transparent 40%, rgba(255,255,255,.18) 50%, transparent 60%);
+    transform: translateX(-60%) rotate(8deg);
+    animation: shine 6.5s linear infinite;
+  }
+  @keyframes shine { 0%{transform:translateX(-60%) rotate(8deg)} 100%{transform:translateX(60%) rotate(8deg)} }
+  .pop { animation: pop .55s cubic-bezier(.2,.9,.2,1) both; }
+  @keyframes pop { from{transform:translateY(16px) scale(.98); opacity:0} to{transform:translateY(0) scale(1); opacity:1} }
+  .pulseRing { animation: ring 1.8s ease-in-out infinite; }
+  @keyframes ring { 0%,100%{transform:scale(1); opacity:.65} 50%{transform:scale(1.04); opacity:1} }
+</style>
+
 </head>
 
 <body class="min-h-screen bg-anim text-white font-sans">
