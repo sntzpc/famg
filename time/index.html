@@ -1,0 +1,1458 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Family Gathering 2026 - Performance Timer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Ctext y='54' x='6' font-size='56'%3E%F0%9F%93%85%3C/text%3E%3C/svg%3E" />
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2c3e50;
+            --accent-color: #e74c3c;
+            --light-color: #ecf0f1;
+            --dark-color: #2c3e50;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--dark-color);
+            background-image: url(img/banner.png);color: #292c2e;
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            min-height: 100vh;
+        }
+
+        .overlay {
+            /* background-color: rgba(255, 255, 255, 0.85); */
+            min-height: 100vh;
+            padding-bottom: 20px;
+        }
+
+        .dashboard-header {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            padding: 15px 0;
+            margin-bottom: 20px;
+            border-radius: 0 0 10px 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .card {
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+            margin-bottom: 15px;
+            background-color: rgba(255, 255, 255, 0.9);
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card-header {
+            background-color: var(--primary-color) !important;
+            color: white;
+            border-radius: 10px 10px 0 0 !important;
+            font-weight: bold;
+            padding: 0.75rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            opacity: 0, 5;
+        }
+
+        .card-header .btn-group {
+            display: flex;
+            gap: 0.3rem;
+            margin-top: 0.3rem;
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        .btn-primary:hover {
+            background-color: #2980b9;
+            border-color: #2980b9;
+        }
+
+        .btn-danger {
+            background-color: var(--accent-color);
+            border-color: var(--accent-color);
+        }
+
+        .btn-danger:hover {
+            background-color: #c0392b;
+            border-color: #c0392b;
+        }
+
+        .timer-display {
+            font-size: 3rem;
+            font-weight: bold;
+            text-align: center;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+        }
+
+        @media (min-width: 768px) {
+            .timer-display {
+                font-size: 6rem;
+                margin: 20px 0;
+            }
+        }
+
+        .danger {
+            color: var(--accent-color);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.7;
+            }
+
+            100% {
+                opacity: 1;
+            }
+        }
+
+        .logo-container {
+            text-align: center;
+            margin-bottom: 15px;
+            padding: 0 10px;
+            opacity: 0;
+        }
+
+        .logo-container img {
+            max-height: 80px;
+            margin-bottom: 10px;
+        }
+
+        @media (min-width: 768px) {
+            .logo-container img {
+                max-height: 100px;
+            }
+        }
+
+        .logo-container h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            opacity: 0;
+        }
+
+        .logo-container h3 {
+            font-size: 1.2rem;
+            opacity: 0;
+        }
+
+        @media (min-width: 768px) {
+            .logo-container h1 {
+                font-size: 2rem;
+            }
+
+            .logo-container h3 {
+                font-size: 1.5rem;
+            }
+        }
+
+        .control-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .control-buttons .btn {
+            flex: 1 1 45%;
+            min-width: 120px;
+            padding: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        @media (min-width: 768px) {
+            .control-buttons {
+                gap: 10px;
+                margin-bottom: 20px;
+            }
+
+            .control-buttons .btn {
+                flex: none;
+                padding: 0.5rem 1rem;
+                font-size: 1rem;
+            }
+        }
+
+        .event-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .lap-time {
+            font-family: 'Courier New', monospace;
+        }
+
+        .timer-option {
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 5px;
+            margin: 3px;
+            text-align: center;
+            background-color: #f8f9fa;
+            transition: all 0.3s;
+            flex: 1 1 45%;
+            font-size: 0.9rem;
+        }
+
+        @media (min-width: 768px) {
+            .timer-option {
+                padding: 10px;
+                margin: 5px;
+                flex: none;
+                font-size: 1rem;
+            }
+        }
+
+        .timer-option:hover {
+            background-color: #e9ecef;
+        }
+
+        .timer-option.active {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        #loadingSpinner {
+            display: none;
+            color: var(--primary-color);
+        }
+
+        .footer {
+            background-color: var(--secondary-color);
+            color: white;
+            padding: 10px 0;
+            margin-top: 20px;
+            text-align: center;
+            border-radius: 10px 10px 0 0;
+            font-size: 0.9rem;
+        }
+
+        .badge-success {
+            background-color: #2ecc71;
+        }
+
+        .badge-warning {
+            background-color: #f39c12;
+        }
+
+        .badge-danger {
+            background-color: #e74c3c;
+        }
+
+        .card-header .btn-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.8rem;
+            line-height: 1.5;
+        }
+
+        .card-header .btn {
+            margin-left: 3px;
+        }
+
+        .input-group {
+            margin-bottom: 10px;
+        }
+
+        .input-group .form-control,
+        .input-group .form-select {
+            font-size: 0.9rem;
+        }
+
+        .input-group .btn {
+            font-size: 0.9rem;
+            white-space: nowrap;
+        }
+
+        /* Stack columns on mobile */
+        @media (max-width: 767px) {
+
+            .col-md-8,
+            .col-md-4 {
+                flex: 0 0 100%;
+                max-width: 100%;
+            }
+        }
+
+        /* Better spacing for mobile */
+        .row {
+            margin-left: -5px;
+            margin-right: -5px;
+        }
+
+        .row>[class^="col-"] {
+            padding-left: 5px;
+            padding-right: 5px;
+        }
+
+        /* Performance records items */
+        .performance-item {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .performance-item:last-child {
+            border-bottom: none;
+        }
+
+        /* Flip clock style adjustments */
+        .flip-digit {
+            display: inline-block;
+            background: #333;
+            color: white;
+            padding: 5px;
+            border-radius: 5px;
+            min-width: 40px;
+            text-align: center;
+        }
+
+        /* Circle timer adjustments */
+        .progress-ring text {
+            font-size: 1.5rem;
+        }
+
+        @media (min-width: 768px) {
+            .progress-ring text {
+                font-size: 2.5rem;
+            }
+        }
+
+        #stopwatchSection {
+            transition: all 0.3s ease;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="overlay">
+        <div class="container">
+            <div class="logo-container">
+                <img src="../images/logo.png" alt="KARYAMAS Plantation Logo" class="img-fluid">
+                <h1>Family Gathering KMP1 Tahun 2025</h1>
+                <h3>Performance Timer</h3>
+                <!-- <img src="Logo KAN done.png" alt="KARYAMAS Plantation Logo" class="img-fluid">
+                <h1>Family Gathering KMP1 Tahun 2025</h1>
+                <h3>Performance Timer</h3> -->
+            </div>
+
+            <div class="row">
+                <!-- Main Timer Section -->
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-clock me-2"></i> Performance Timer</span>
+                        </div>
+                        <div class="card-body">
+                            <div id="timerDisplay" class="timer-display">00:00:00</div>
+                            <div class="control-buttons">
+                                <button id="startBtn" class="btn btn-success">
+                                    <i class="fas fa-play me-1"></i> Start
+                                </button>
+                                <button id="pauseBtn" class="btn btn-warning" disabled>
+                                    <i class="fas fa-pause me-1"></i> Pause
+                                </button>
+                                <button id="resetBtn" class="btn btn-danger">
+                                    <i class="fas fa-stop me-1"></i> Reset
+                                </button>
+                                <button id="stopAndRecordBtn" class="btn btn-info">
+                                    <i class="fas fa-flag-checkered me-1"></i> Stop & Record
+                                </button>
+                                <button id="modeToggle" class="btn btn-secondary">
+                                    <i class="fas fa-exchange-alt me-1"></i> Switch to Stopwatch
+                                </button>
+                            </div>
+
+                            <!-- Timer Options -->
+                            <div class="mt-3">
+                                <h5>Timer Style:</h5>
+                                <div class="d-flex flex-wrap">
+                                    <div class="timer-option active" data-style="digital">
+                                        <i class="fas fa-digital-tachometer me-1"></i> Digital
+                                    </div>
+                                    <div class="timer-option" data-style="flip">
+                                        <i class="fas fa-clock me-1"></i> Flip Clock
+                                    </div>
+                                    <div class="timer-option" data-style="circle">
+                                        <i class="fas fa-circle-notch me-1"></i> Circle
+                                    </div>
+                                    <div class="timer-option" data-style="text">
+                                        <i class="fas fa-font me-1"></i> Text Only
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Event Info -->
+                            <div class="mt-3">
+                                <div class="input-group">
+                                    <input type="text" id="eventName" class="form-control"
+                                        placeholder="Performance name">
+                                    <input type="number" id="eventMinutes" class="form-control" placeholder="Minutes"
+                                        min="1" value="5">
+                                    <button id="addEventBtn" class="btn btn-primary">
+                                        <i class="fas fa-plus me-1"></i> Add
+                                    </button>
+                                </div>
+                                <div class="input-group">
+                                    <select id="eventList" class="form-select">
+                                        <option value="">Select a performance...</option>
+                                    </select>
+                                    <button id="removeEventBtn" class="btn btn-danger">
+                                        <i class="fas fa-trash me-1"></i> Remove
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!--Stopwatch Lap Times Section -->
+                <div class="col-12" id="stopwatchSection" style="display: none;">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-stopwatch me-2"></i> Stopwatch Laps</span>
+                        </div>
+                        <div class="card-body">
+                            <div id="lapControls">
+                                <div class="d-flex">
+                                    <button id="lapBtn" class="btn btn-secondary btn-sm flex-grow-1 me-2">
+                                        <i class="fas fa-flag me-1"></i> Record Lap
+                                    </button>
+                                    <button id="exportLapsBtn" class="btn btn-success btn-sm flex-grow-1">
+                                        <i class="fas fa-file-excel me-1"></i> Export
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="lapTimes" class="event-list mt-2">
+                                <p class="text-muted">No lap times recorded yet.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Upcoming Events Section -->
+            <div class="row mt-3">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-list me-2"></i> Upcoming Performances</span>
+                            <div>
+                                <button id="importExcelBtn" class="btn btn-info btn-sm me-1">
+                                    <i class="fas fa-file-upload me-1"></i> Import Excel
+                                </button>
+                                <button id="exportUpcomingBtn" class="btn btn-success btn-sm me-1">
+                                    <i class="fas fa-file-excel me-1"></i> Export
+                                </button>
+                                <button id="deleteUpcomingBtn" class="btn btn-danger btn-sm">
+                                    <i class="fas fa-trash me-1"></i> Delete All
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div id="upcomingEvents" class="event-list">
+                                <!-- Upcoming events will be displayed here -->
+                                <p class="text-muted">No upcoming performances scheduled.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Performance Records Section -->
+            <div class="row mt-3">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-clipboard-list me-2"></i> Performance Records</span>
+                            <div>
+                                <button id="exportRecordsBtn" class="btn btn-success btn-sm me-1">
+                                    <i class="fas fa-file-excel me-1"></i> Export
+                                </button>
+                                <button id="deleteRecordsBtn" class="btn btn-danger btn-sm">
+                                    <i class="fas fa-trash me-1"></i> Delete All
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div id="performanceRecords" class="event-list">
+                                <!-- Performance records will be displayed here -->
+                                <p class="text-muted">No performance records yet.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="footer">
+                <div class="container">
+                    <p class="mb-0">&copy; 2025 KMP1 Family Gathering Timer</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <audio id="beepSound" src="audio/10sec.mp3" preload="auto"></audio>
+    <audio id="endSound" src="audio/End.mp3" preload="auto"></audio>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <script>
+        // Global variables
+        let timerInterval;
+        let remainingTime = 0;
+        let isRunning = false;
+        let isTimerMode = true; // true for countdown, false for stopwatch
+        let timerStyle = 'digital';
+        let events = [];
+        let laps = [];
+        let performanceRecords = [];
+        let performanceStartTime = null;
+        let performanceEndTime = null;
+        let remoteUpcoming = null; 
+
+        const GAS_TIMER_URL = (window.GAS_TIMER_URL || '').trim() || 'https://script.google.com/macros/s/AKfycbzJqQLXDUySEkMuChhXBP9bCN-j8Khob5zi41rfinEa2E-89BwT32g0ag46IUvTVVoomQ/exec';
+
+        // Polling interval (ms) untuk refresh otomatis saat online
+        const REMOTE_POLL_MS = 15000;
+
+        // Cache status server (untuk dedupe)
+        let lastServerEventsHash = '';
+        let lastServerCurrentUpdatedAt = '';
+
+        function isOnline(){
+            return navigator.onLine && GAS_TIMER_URL && !/PASTE_YOUR_GAS_WEBAPP_URL_HERE/i.test(GAS_TIMER_URL);
+        }
+
+        // Simple toast (Bootstrap)
+        function toast(msg, type='info'){
+            try{
+                const id = 'fg-toast-host';
+                let host = document.getElementById(id);
+                if(!host){
+                    host = document.createElement('div');
+                    host.id = id;
+                    host.className = 'position-fixed bottom-0 end-0 p-3';
+                    host.style.zIndex = 9999;
+                    document.body.appendChild(host);
+                }
+                const el = document.createElement('div');
+                el.className = `toast align-items-center text-bg-${type} border-0`;
+                el.setAttribute('role','alert');
+                el.setAttribute('aria-live','assertive');
+                el.setAttribute('aria-atomic','true');
+                el.innerHTML = `
+                  <div class="d-flex">
+                    <div class="toast-body">${String(msg||'')}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                  </div>`;
+                host.appendChild(el);
+                const t = new bootstrap.Toast(el, { delay: 2500 });
+                t.show();
+                el.addEventListener('hidden.bs.toast', ()=> el.remove());
+            }catch(e){
+                console.log(msg);
+            }
+        }
+
+        // JSONP helper (menghindari kendala CORS pada Apps Script)
+        function jsonp(url, timeoutMs=12000){
+            return new Promise((resolve, reject)=>{
+                const cb = 'fgcb_' + Math.random().toString(36).slice(2);
+                const script = document.createElement('script');
+                const timer = setTimeout(()=>{
+                    cleanup();
+                    reject(new Error('JSONP timeout'));
+                }, timeoutMs);
+
+                function cleanup(){
+                    clearTimeout(timer);
+                    try{ delete window[cb]; }catch{}
+                    if(script && script.parentNode) script.parentNode.removeChild(script);
+                }
+
+                window[cb] = (data)=>{
+                    cleanup();
+                    resolve(data);
+                };
+
+                const sep = url.includes('?') ? '&' : '?';
+                script.src = `${url}${sep}callback=${cb}`;
+                script.onerror = ()=>{
+                    cleanup();
+                    reject(new Error('JSONP network error'));
+                };
+                document.head.appendChild(script);
+            });
+        }
+
+        function hashString(s){
+            // hash cepat untuk dedupe update UI
+            let h=0; s=String(s||'');
+            for(let i=0;i<s.length;i++){ h=((h<<5)-h)+s.charCodeAt(i); h|=0; }
+            return String(h);
+        }
+
+        function applyRemoteConfig(cfg){
+            try{
+                if(!cfg) return;
+                const obj = (typeof cfg === 'string') ? JSON.parse(cfg) : cfg;
+                if(!obj || typeof obj !== 'object') return;
+
+                const brand = obj.app?.brand || {};
+                const pagesIndex = obj.app?.pages?.index || {};
+
+                // document.title
+                const docTitle = brand.appName || pagesIndex.docTitle || brand.headerTitle || pagesIndex.appHeaderTitle || '';
+                if(docTitle) document.title = docTitle;
+
+                // Header (logo-container)
+                const h1 = document.querySelector('.logo-container h1');
+                const h3 = document.querySelector('.logo-container h3');
+
+                const headerTitle = brand.headerTitle || pagesIndex.appHeaderTitle || obj.event?.name || '';
+                const headerSub   = brand.headerSubtitle || pagesIndex.appHeaderSubtitle || pagesIndex.presenceSubtitle || 'Performance Timer';
+
+                if(h1 && headerTitle) h1.textContent = headerTitle;
+                if(h3 && headerSub) h3.textContent = headerSub;
+
+                // Footer
+                const footerP = document.querySelector('.footer p');
+                if(footerP){
+                const footerCopy  = pagesIndex.footerCopy || '';
+                const footerOrg   = pagesIndex.footerOrg || '';
+                const footerEvent = pagesIndex.footerEvent || '';
+                const footerDate  = pagesIndex.footerDate || '';
+
+                const parts = [];
+                if(footerCopy) parts.push(footerCopy);
+                if(footerOrg) parts.push(footerOrg);
+                if(footerEvent) parts.push(footerEvent);
+                if(footerDate) parts.push(footerDate);
+
+                if(parts.length) footerP.textContent = parts.join(' • ');
+                }
+            }catch(err){
+                console.warn('applyRemoteConfig failed:', err);
+            }
+            }
+
+        async function fetchRemoteTimerData(){
+            if(!isOnline()) return null;
+            const url = `${GAS_TIMER_URL}?action=timer.get`;
+            const data = await jsonp(url);
+            return data;
+        }
+
+        function applyRemoteUpcoming(list){
+            if(!Array.isArray(list)) { remoteUpcoming = null; return; }
+            remoteUpcoming = list.map(x=>({
+                id: String(x.id||''),
+                name: String(x.name||''),
+                minutes: Number(x.minutes||0)
+            })).filter(x=>x.name && x.minutes>0);
+            }
+
+        function applyRemoteEvents(remoteEvents){
+            if(!Array.isArray(remoteEvents)) return;
+            const h = hashString(JSON.stringify(remoteEvents));
+            if(h === lastServerEventsHash) return;
+            lastServerEventsHash = h;
+
+            // Backend sekarang mengirim events sudah normalized: {id,name,minutes,sort}
+            events = remoteEvents
+                .slice()
+                .map(r => ({
+                id: String(r.id || ''),
+                name: String(r.name || ''),
+                minutes: Number(r.minutes || 0)
+                }))
+                .filter(x => x.id && x.name && x.minutes > 0);
+
+            saveEvents();      // supaya offline tetap jalan
+            updateEventList(); // refresh dropdown + fallback upcoming
+            }
+
+        function applyRemoteCurrent(remoteCurrent){
+            if(!remoteCurrent || !remoteCurrent.event_id) return;
+
+            const updatedAt = String(remoteCurrent.updated_at || '');
+            if(updatedAt && updatedAt === lastServerCurrentUpdatedAt) return; // no change
+            lastServerCurrentUpdatedAt = updatedAt;
+
+            const title = remoteCurrent.title || '';
+            const minutes = Number(remoteCurrent.minutes || 0);
+
+            // Jangan ganggu timer yang sedang berjalan
+            if(isRunning){
+                toast(`Server mengubah current event ke: ${title} (${minutes} menit). Timer tetap lanjut.`, 'warning');
+                // hanya update teks kecil saja, tidak menyentuh remainingTime
+                eventName.value = title;
+                eventMinutes.value = minutes ? String(minutes) : '';
+                return;
+            }
+
+            // Jika tidak running, aman update input dan juga remainingTime jika mode countdown & belum di-set manual
+            eventName.value = title;
+            eventMinutes.value = minutes ? String(minutes) : '';
+
+            // Optional: kalau dalam mode timer dan remainingTime==0, set durasi otomatis
+            if(isTimerMode && (!remainingTime || remainingTime<=0)){
+                remainingTime = Math.max(0, minutes*60);
+                updateTimerDisplay();
+            }
+
+            toast(`Sinkron current event: ${title} (${minutes} menit)`, 'success');
+        }
+
+        async function syncFromServerOnce(){
+            try{
+                if(!isOnline()) return;
+
+                const data = await fetchRemoteTimerData();
+                if(!data || data.ok === false) return;
+
+                // 1) Branding dari backend
+                if(data.config) applyRemoteConfig(data.config);
+
+                // 2) Master events (normalized) -> dropdown timer
+                if(data.events) applyRemoteEvents(data.events);
+
+                // 3) Current event -> input timer (tanpa ganggu timer running)
+                if(data.current) applyRemoteCurrent(data.current);
+
+                // 4) Upcoming (sudah difilter oleh backend)
+                if(data.upcoming) applyRemoteUpcoming(data.upcoming);
+
+                // Refresh tampilan upcoming
+                updateUpcomingUI();
+            }catch(err){
+                console.warn('Sync failed:', err);
+            }
+            }
+
+            function updateUpcomingUI(){
+                const list = Array.isArray(remoteUpcoming) ? remoteUpcoming : events; // fallback offline
+                if(list.length > 0){
+                    upcomingEvents.innerHTML = '';
+                    list.forEach(ev=>{
+                    const div = document.createElement('div');
+                    div.className = 'd-flex justify-content-between align-items-center mb-2 performance-item';
+                    div.innerHTML = `
+                        <span>${ev.name}</span>
+                        <span class="badge bg-primary">${ev.minutes} min</span>
+                    `;
+                    upcomingEvents.appendChild(div);
+                    });
+                }else{
+                    upcomingEvents.innerHTML = '<p class="text-muted">No upcoming performances scheduled.</p>';
+                }
+                }
+
+        function startRemotePolling(){
+            // run sekali di awal
+            syncFromServerOnce();
+
+            // polling berkala
+            setInterval(()=>{
+                if(isOnline()) syncFromServerOnce();
+            }, REMOTE_POLL_MS);
+
+            // ketika kembali online, sync
+            window.addEventListener('online', ()=> syncFromServerOnce());
+        }
+
+
+        // DOM elements
+        const timerDisplay = document.getElementById('timerDisplay');
+        const startBtn = document.getElementById('startBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const modeToggle = document.getElementById('modeToggle');
+        const eventName = document.getElementById('eventName');
+        const eventMinutes = document.getElementById('eventMinutes');
+        const addEventBtn = document.getElementById('addEventBtn');
+        const eventList = document.getElementById('eventList');
+        const removeEventBtn = document.getElementById('removeEventBtn');
+        const upcomingEvents = document.getElementById('upcomingEvents');
+        const lapBtn = document.getElementById('lapBtn');
+        const exportLapsBtn = document.getElementById('exportLapsBtn');
+        const lapTimes = document.getElementById('lapTimes');
+        const lapControls = document.getElementById('lapControls');
+        const beepSound = document.getElementById('beepSound');
+        const endSound = document.getElementById('endSound');
+
+        // Timer options
+        const timerOptions = document.querySelectorAll('.timer-option');
+
+        // Initialize
+        $(document).ready(function () {
+            // Load saved events from localStorage
+            loadEvents();
+
+            
+            // ✅ Auto sync dari Google Sheet saat online
+            startRemotePolling();
+// Set up event listeners
+            startBtn.addEventListener('click', startTimer);
+            pauseBtn.addEventListener('click', pauseTimer);
+            resetBtn.addEventListener('click', resetTimer);
+            modeToggle.addEventListener('click', toggleMode);
+            addEventBtn.addEventListener('click', addEvent);
+            removeEventBtn.addEventListener('click', removeEvent);
+            eventList.addEventListener('change', selectEvent);
+            lapBtn.addEventListener('click', recordLap);
+            exportLapsBtn.addEventListener('click', exportLaps);
+            document.getElementById('exportRecordsBtn').addEventListener('click', exportPerformanceRecords);
+            document.getElementById('stopAndRecordBtn').addEventListener('click', function () {
+                if (isRunning && isTimerMode) {
+                    pauseTimer();
+                    recordPerformance();
+                    alert('Performance stopped and recorded.');
+                }
+            });
+            document.getElementById('exportUpcomingBtn').addEventListener('click', exportUpcomingPerformances);
+            document.getElementById('deleteUpcomingBtn').addEventListener('click', deleteUpcomingPerformances);
+            document.getElementById('deleteRecordsBtn').addEventListener('click', deletePerformanceRecords);
+            document.getElementById('importExcelBtn').addEventListener('click', function () {
+                document.getElementById('excelUpload').click();
+            });
+            document.getElementById('excelUpload').addEventListener('change', handleExcelUpload);
+
+            // Timer style options
+            timerOptions.forEach(option => {
+                option.addEventListener('click', function () {
+                    timerOptions.forEach(opt => opt.classList.remove('active'));
+                    this.classList.add('active');
+                    timerStyle = this.getAttribute('data-style');
+                    updateTimerDisplay();
+                });
+            });
+
+            // Initial display update
+            updateTimerDisplay();
+
+            // Load saved performance records from localStorage
+            loadPerformanceRecords();
+        });
+
+        // Timer functions
+        function startTimer() {
+            if (!isRunning) {
+                if (isTimerMode && remainingTime <= 0) {
+                    alert('Please set a time or select an event first.');
+                    return;
+                }
+
+                // Record the start time when timer begins
+                performanceStartTime = new Date();
+
+                isRunning = true;
+                startBtn.disabled = true;
+                pauseBtn.disabled = false;
+
+                const startTime = Date.now() - (isTimerMode ? (remainingTime > 0 ? (getTotalSeconds() - remainingTime) *
+                    1000 : 0) : 0);
+                let hasBeepedAt10 = false;
+
+                timerInterval = setInterval(() => {
+                    if (isTimerMode) {
+                        // Countdown timer logic
+                        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                        remainingTime = Math.max(0, getTotalSeconds() - elapsed);
+
+                        updateTimerDisplay();
+
+                        // Check if exactly 10 seconds remaining
+                        if (Math.floor(remainingTime) === 10 && !hasBeepedAt10) {
+                            timerDisplay.classList.add('danger');
+                            hasBeepedAt10 = true;
+                            try {
+                                beepSound.currentTime = 0;
+                                beepSound.play().catch(e => console.log("Couldn't play beep sound:", e));
+                            } catch (e) {
+                                console.log("Audio error:", e);
+                            }
+                        }
+
+                        // Check if timer reached zero
+                        if (remainingTime <= 0) {
+                            timerFinished();
+                        }
+                    } else {
+                        // Stopwatch logic
+                        remainingTime = Math.floor((Date.now() - startTime) / 1000);
+                        updateTimerDisplay();
+                    }
+                }, 100);
+            }
+        }
+
+        function pauseTimer() {
+            if (isRunning) {
+                clearInterval(timerInterval);
+                isRunning = false;
+                startBtn.disabled = false;
+                pauseBtn.disabled = true;
+                timerDisplay.classList.remove('danger');
+            }
+        }
+
+        function resetTimer() {
+            clearInterval(timerInterval);
+            isRunning = false;
+            startBtn.disabled = false;
+            pauseBtn.disabled = true;
+            timerDisplay.classList.remove('danger');
+
+            if (isTimerMode) {
+                remainingTime = getTotalSeconds();
+            } else {
+                remainingTime = 0;
+                laps = [];
+                updateLapTimes();
+            }
+
+            updateTimerDisplay();
+        }
+
+        function calculateDuration(start, end) {
+            const diffInSeconds = Math.floor((end - start) / 1000);
+            const hours = Math.floor(diffInSeconds / 3600);
+            const minutes = Math.floor((diffInSeconds % 3600) / 60);
+            const seconds = diffInSeconds % 60;
+
+            return {
+                totalSeconds: diffInSeconds,
+                formatted: `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`,
+                minutes: Math.ceil(diffInSeconds / 60)
+            };
+        }
+
+        function timerFinished() {
+            clearInterval(timerInterval);
+            isRunning = false;
+
+            // Record the performance BEFORE resetting
+            recordPerformance();
+
+            // Reset the timer display
+            startBtn.disabled = false;
+            pauseBtn.disabled = true;
+            timerDisplay.classList.remove('danger');
+
+            // Stop beep sound if it's still playing
+            beepSound.pause();
+            beepSound.currentTime = 0;
+
+            // Play end sound
+            try {
+                endSound.currentTime = 0;
+                endSound.play().catch(e => console.log("Couldn't play end sound:", e));
+            } catch (e) {
+                console.log("Audio error:", e);
+            }
+
+            // Show notification
+            alert('Time is up! Performance recorded.');
+        }
+
+        // Fungsi untuk mengunggah dan membaca file Excel
+        function handleExcelUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {
+                    type: 'array'
+                });
+
+                // Ambil sheet pertama
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+
+                // Konversi ke JSON
+                const jsonData = XLSX.utils.sheet_to_json(firstSheet, {
+                    header: 1
+                });
+
+                // Proses data (lewati header jika ada)
+                const newEvents = [];
+                for (let i = 1; i < jsonData.length; i++) {
+                    const row = jsonData[i];
+                    if (row && row.length >= 2) {
+                        const name = row[0] ?.toString().trim();
+                        const minutes = parseInt(row[1]);
+
+                        if (name && !isNaN(minutes) && minutes > 0) {
+                            newEvents.push({
+                                id: Date.now().toString() + i,
+                                name: name,
+                                minutes: minutes
+                            });
+                        }
+                    }
+                }
+
+                if (newEvents.length > 0) {
+                    events = [...events, ...newEvents];
+                    saveEvents();
+                    updateEventList();
+                    alert(`Successfully imported ${newEvents.length} performances from Excel.`);
+                } else {
+                    alert('No valid performance data found in the Excel file.');
+                }
+
+                // Reset input file
+                event.target.value = '';
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function recordPerformance() {
+            if (!eventList.value) return;
+
+            const event = events.find(e => e.id === eventList.value);
+            if (!event) return;
+
+            // Record the end time when performance is recorded
+            performanceEndTime = new Date();
+
+            // Calculate the actual duration
+            let actualDuration;
+            if (performanceStartTime && performanceEndTime) {
+                actualDuration = calculateDuration(performanceStartTime, performanceEndTime);
+            } else {
+                // Fallback to previous calculation if timestamps aren't available
+                const elapsedTime = getTotalSeconds() - remainingTime;
+                actualDuration = {
+                    totalSeconds: elapsedTime,
+                    formatted: formatTime(elapsedTime),
+                    minutes: Math.ceil(elapsedTime / 60)
+                };
+            }
+
+            const record = {
+                id: Date.now().toString(),
+                eventId: event.id,
+                name: event.name,
+                scheduledTime: event.minutes,
+                actualTime: actualDuration.formatted,
+                actualMinutes: actualDuration.minutes,
+                startTimestamp: performanceStartTime ? performanceStartTime.toLocaleString() : 'N/A',
+                endTimestamp: performanceEndTime ? performanceEndTime.toLocaleString() : 'N/A',
+                timestamp: new Date().toLocaleString()
+            };
+
+
+            performanceRecords.push(record);
+            updatePerformanceRecords();
+
+            // Save to localStorage
+            localStorage.setItem('performanceRecords', JSON.stringify(performanceRecords));
+
+            // Reset timestamps for next performance
+            performanceStartTime = null;
+            performanceEndTime = null;
+
+        }
+
+        function toggleMode() {
+            pauseTimer();
+
+            isTimerMode = !isTimerMode;
+
+            if (isTimerMode) {
+                modeToggle.innerHTML = '<i class="fas fa-exchange-alt me-1"></i> Switch to Stopwatch';
+                remainingTime = getTotalSeconds();
+                document.getElementById('stopwatchSection').style.display = 'none';
+            } else {
+                modeToggle.innerHTML = '<i class="fas fa-exchange-alt me-1"></i> Switch to Timer';
+                remainingTime = 0;
+                document.getElementById('stopwatchSection').style.display = 'block';
+            }
+
+            updateTimerDisplay();
+        }
+
+        function getTotalSeconds() {
+            if (eventList.value && events.find(e => e.id === eventList.value)) {
+                const event = events.find(e => e.id === eventList.value);
+                return event.minutes * 60;
+            }
+            return 5 * 60; // Default to 5 minutes
+        }
+
+        function updateTimerDisplay() {
+            if (isTimerMode) {
+                // Countdown display
+                const hours = Math.floor(remainingTime / 3600);
+                const minutes = Math.floor((remainingTime % 3600) / 60);
+                const seconds = remainingTime % 60;
+
+                switch (timerStyle) {
+                    case 'digital':
+                        timerDisplay.innerHTML =
+                            `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                        break;
+                    case 'flip':
+                        timerDisplay.innerHTML = `
+                            <div class="flip-clock">
+                                <span class="flip-digit">${hours.toString().padStart(2, '0')}</span>:
+                                <span class="flip-digit">${minutes.toString().padStart(2, '0')}</span>:
+                                <span class="flip-digit">${seconds.toString().padStart(2, '0')}</span>
+                            </div>
+                        `;
+                        break;
+                    case 'circle':
+                        const radius = 40;
+                        const circumference = 2 * Math.PI * radius;
+                        const offset = circumference - (remainingTime / getTotalSeconds()) * circumference;
+
+                        timerDisplay.innerHTML = `
+                            <svg class="progress-ring" width="200" height="200">
+                                <circle class="progress-ring__circle" stroke="#3498db" stroke-width="10" fill="transparent" r="${radius}" cx="100" cy="100"/>
+                                <circle class="progress-ring__circle progress-ring__circle--progress" stroke="#e74c3c" stroke-width="10" fill="transparent" r="${radius}" cx="100" cy="100" style="stroke-dasharray: ${circumference}; stroke-dashoffset: ${offset}"/>
+                                <text x="50%" y="50%" text-anchor="middle" stroke="#2c3e50" stroke-width="1px" dy=".3em">${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}</text>
+                            </svg>
+                        `;
+                        break;
+                    case 'text':
+                        timerDisplay.innerHTML = `
+                            <div class="text-timer">
+                                <div>${hours} hours</div>
+                                <div>${minutes} minutes</div>
+                                <div>${seconds} seconds</div>
+                            </div>
+                        `;
+                        break;
+                }
+            } else {
+                // Stopwatch display
+                const hours = Math.floor(remainingTime / 3600);
+                const minutes = Math.floor((remainingTime % 3600) / 60);
+                const seconds = remainingTime % 60;
+
+                timerDisplay.textContent =
+                    `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            }
+        }
+
+        // Event management functions
+        function addEvent() {
+            const name = eventName.value.trim();
+            const minutes = parseInt(eventMinutes.value);
+
+            if (!name) {
+                alert('Please enter a performance name.');
+                return;
+            }
+
+            if (isNaN(minutes) || minutes <= 0) {
+                alert('Please enter a valid number of minutes.');
+                return;
+            }
+
+            const event = {
+                id: Date.now().toString(),
+                name: name,
+                minutes: minutes
+            };
+
+            events.push(event);
+            saveEvents();
+            updateEventList();
+
+            eventName.value = '';
+            eventMinutes.value = '5';
+
+            // Select the newly added event
+            eventList.value = event.id;
+            remainingTime = minutes * 60;
+            updateTimerDisplay();
+        }
+
+        function removeEvent() {
+            const eventId = eventList.value;
+
+            if (!eventId) {
+                alert('Please select a performance to remove.');
+                return;
+            }
+
+            if (confirm('Are you sure you want to remove this performance?')) {
+                events = events.filter(event => event.id !== eventId);
+                saveEvents();
+                updateEventList();
+
+                // Reset to default if current event was removed
+                if (isTimerMode) {
+                    remainingTime = 5 * 60;
+                    updateTimerDisplay();
+                }
+            }
+        }
+
+        function selectEvent() {
+            const eventId = eventList.value;
+
+            if (eventId && isTimerMode) {
+                const event = events.find(e => e.id === eventId);
+                if (event) {
+                    remainingTime = event.minutes * 60;
+                    updateTimerDisplay();
+                }
+            }
+        }
+
+        function loadEvents() {
+            // 1) Offline-first: load dari localStorage dulu (cepat)
+            const savedEvents = localStorage.getItem('performanceEvents');
+            if (savedEvents) {
+                try{ events = JSON.parse(savedEvents) || []; }catch{ events=[]; }
+                updateEventList();
+            }
+
+            // 2) Jika online -> ambil master schedule dari Google Sheet (tanpa ganggu timer)
+            //    Note: akan overwrite events local jika server tersedia (source of truth)
+            if (isOnline()) {
+                syncFromServerOnce();
+            }
+        }
+
+        function saveEvents() {
+            localStorage.setItem('performanceEvents', JSON.stringify(events));
+        }
+
+        function updateEventList() {
+            // Dropdown
+            eventList.innerHTML = '<option value="">Select a performance...</option>';
+            events.forEach(event => {
+                const option = document.createElement('option');
+                option.value = event.id;
+                option.textContent = `${event.name} (${event.minutes} min)`;
+                eventList.appendChild(option);
+            });
+
+            // Upcoming panel
+            updateUpcomingUI();
+            }
+
+        // Stopwatch lap functions
+        function recordLap() {
+            if (!isRunning || isTimerMode) return;
+
+            const lapTime = {
+                number: laps.length + 1,
+                time: remainingTime,
+                formatted: formatTime(remainingTime)
+            };
+
+            laps.push(lapTime);
+            updateLapTimes();
+        }
+
+        function updateLapTimes() {
+            if (laps.length > 0) {
+                lapTimes.innerHTML = '';
+                laps.forEach(lap => {
+                    const div = document.createElement('div');
+                    div.className = 'd-flex justify-content-between align-items-center mb-2 performance-item';
+                    div.innerHTML = `
+                        <span>Lap ${lap.number}:</span>
+                        <span class="lap-time">${lap.formatted}</span>
+                    `;
+                    lapTimes.appendChild(div);
+                });
+            } else {
+                lapTimes.innerHTML = '<p class="text-muted">No lap times recorded yet.</p>';
+            }
+        }
+
+        function formatTime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function exportLaps() {
+            if (laps.length === 0) {
+                alert('No lap times to export.');
+                return;
+            }
+
+            // Prepare data for export
+            const data = [
+                ['Lap Number', 'Time (seconds)', 'Formatted Time'],
+                ...laps.map(lap => [lap.number, lap.time, lap.formatted])
+            ];
+
+            // Create worksheet
+            const ws = XLSX.utils.aoa_to_sheet(data);
+
+            // Create workbook
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Lap Times");
+
+            // Export to file
+            XLSX.writeFile(wb, "stopwatch_laps.xlsx");
+        }
+
+        function updatePerformanceRecords() {
+            const recordsContainer = document.getElementById('performanceRecords');
+
+            if (performanceRecords.length > 0) {
+                recordsContainer.innerHTML = '';
+
+                // Sort records by timestamp (newest first)
+                const sortedRecords = [...performanceRecords].sort((a, b) =>
+                    new Date(b.timestamp) - new Date(a.timestamp));
+
+                sortedRecords.forEach(record => {
+                    const div = document.createElement('div');
+                    div.className = 'performance-item';
+                    div.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>${record.name}</strong><br>
+                        <small class="text-muted">Recorded: ${record.timestamp}</small>
+                    </div>
+                    <div class="text-end">
+                        <div class="badge bg-primary mb-1">Scheduled: ${record.scheduledTime} min</div>
+                        <div class="badge ${record.actualMinutes > record.scheduledTime ? 'bg-danger' : 'bg-success'}">
+                            Actual: ${record.actualTime} (${record.actualMinutes} min)
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-2 small text-muted">
+                    <div>Started: ${record.startTimestamp}</div>
+                    <div>Ended: ${record.endTimestamp}</div>
+                </div>
+            `;
+                    recordsContainer.appendChild(div);
+                });
+            } else {
+                recordsContainer.innerHTML = '<p class="text-muted">No performance records yet.</p>';
+            }
+        }
+
+        function exportPerformanceRecords() {
+            if (performanceRecords.length === 0) {
+                alert('No performance records to export.');
+                return;
+            }
+
+            // Prepare data for export
+            const data = [
+                ['Performance Name', 'Scheduled Time (min)', 'Actual Time', 'Actual Time (min)',
+                    'Start Time', 'End Time', 'Recorded Time'
+                ],
+                ...performanceRecords.map(record => [
+                    record.name,
+                    record.scheduledTime,
+                    record.actualTime,
+                    record.actualMinutes,
+                    record.startTimestamp,
+                    record.endTimestamp,
+                    record.timestamp
+                ])
+            ];
+
+            // Create worksheet
+            const ws = XLSX.utils.aoa_to_sheet(data);
+
+            // Create workbook
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Performance Records");
+
+            // Export to file
+            XLSX.writeFile(wb, "performance_records.xlsx");
+        }
+
+        function exportUpcomingPerformances() {
+            if (events.length === 0) {
+                alert('No upcoming performances to export.');
+                return;
+            }
+
+            // Prepare data for export
+            const data = [
+                ['Performance Name', 'Scheduled Time (min)'],
+                ...events.map(event => [event.name, event.minutes])
+            ];
+
+            // Create worksheet
+            const ws = XLSX.utils.aoa_to_sheet(data);
+
+            // Create workbook
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Upcoming Performances");
+
+            // Export to file
+            XLSX.writeFile(wb, "upcoming_performances.xlsx");
+        }
+
+        function deleteUpcomingPerformances() {
+            if (events.length === 0) {
+                alert('No upcoming performances to delete.');
+                return;
+            }
+
+            if (confirm('Are you sure you want to delete ALL upcoming performances?')) {
+                events = [];
+                saveEvents();
+                updateEventList();
+                alert('All upcoming performances have been deleted.');
+            }
+        }
+
+        function deletePerformanceRecords() {
+            if (performanceRecords.length === 0) {
+                alert('No performance records to delete.');
+                return;
+            }
+
+            if (confirm('Are you sure you want to delete ALL performance records?')) {
+                performanceRecords = [];
+                localStorage.setItem('performanceRecords', JSON.stringify(performanceRecords));
+                updatePerformanceRecords();
+                alert('All performance records have been deleted.');
+            }
+        }
+
+        function loadPerformanceRecords() {
+            const savedRecords = localStorage.getItem('performanceRecords');
+            if (savedRecords) {
+                performanceRecords = JSON.parse(savedRecords);
+                updatePerformanceRecords();
+            }
+        }
+    </script>
+    <input type="file" id="excelUpload" accept=".xlsx, .xls" style="display: none;">
+</body>
+
+</html>

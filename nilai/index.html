@@ -1,0 +1,2173 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FG - Penilaian</title>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Poppins', 'ui-sans-serif', 'system-ui'] }
+        }
+      }
+    }
+  </script>
+
+  <!-- Fonts + Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Ctext y='54' x='6' font-size='56'%3E%F0%9F%8F%85%3C/text%3E%3C/svg%3E" />
+
+  <!-- SheetJS -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <style>
+    .glass{ backdrop-filter: blur(10px); background: rgba(255,255,255,.75); }
+    .badge{ display:inline-flex; align-items:center; gap:.4rem; padding:.25rem .6rem; border-radius:9999px; font-size:.75rem; }
+    .tabbtn[aria-selected="true"]{ background:#111827; color:#fff; }
+    .star{ cursor:pointer; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-800 font-sans">
+  <!-- Top Bar -->
+  <header class="sticky top-0 z-30 border-b border-slate-200/70 bg-white/70 glass">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="h-10 w-10 rounded-2xl bg-slate-900 text-white grid place-items-center shadow-sm">
+          <i class="fa-solid fa-trophy"></i>
+        </div>
+        <div>
+          <div id="appTitle" class="font-bold leading-tight">Penilaian Family Gathering</div>
+          <div class="text-xs text-slate-500">
+            Event: <span id="eventIdLabel" class="font-semibold">-</span>
+            <span class="mx-2">•</span>
+            <span id="statusOnline" class="badge bg-slate-100 text-slate-700"><i class="fa-solid fa-signal"></i> Offline</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button id="btnUser" class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800 shadow-sm">
+          <i class="fa-solid fa-user"></i><span id="userLabel">Login</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Content -->
+  <main class="max-w-6xl mx-auto px-4 py-6">
+    <!-- Tabs -->
+    <div class="flex flex-wrap items-center gap-2 mb-4">
+      <button class="tabbtn px-3 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50" data-tab="rate" aria-selected="true">
+        <i class="fa-solid fa-star mr-2"></i>Penilaian
+      </button>
+      <button class="tabbtn px-3 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50" data-tab="results" aria-selected="false">
+        <i class="fa-solid fa-chart-column mr-2"></i>Rekap
+      </button>
+      <button class="tabbtn px-3 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50" data-tab="failed" aria-selected="false">
+        <i class="fa-solid fa-triangle-exclamation mr-2"></i>Gagal <span id="failedCount" class="ml-1 text-xs font-semibold text-rose-600">(0)</span>
+      </button>
+      <button id="tabAdminBtn" class="tabbtn px-3 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 hidden" data-tab="admin" aria-selected="false">
+        <i class="fa-solid fa-gear mr-2"></i>Admin
+      </button>
+
+      <div class="ml-auto flex items-center gap-2">
+        <button id="btnExport" class="px-3 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50">
+          <i class="fa-solid fa-file-excel mr-2 text-emerald-700"></i>Export XLSX
+        </button>
+        <button id="btnResetLocal" class="px-3 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50">
+          <i class="fa-solid fa-trash mr-2 text-rose-700"></i>Reset Local
+        </button>
+      </div>
+    </div>
+
+    <!-- Tab: Penilaian -->
+    <section id="tab-rate" class="tabpane">
+      <div class="grid lg:grid-cols-3 gap-4">
+        <div class="lg:col-span-1">
+          <div class="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
+            <div class="font-semibold mb-3">Info Penilaian</div>
+
+            <label class="block text-sm text-slate-600 mb-1">Tanggal Penilaian</label>
+            <input id="eventDate" type="date" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900/20"/>
+
+            <div class="mt-3 grid grid-cols-2 gap-2">
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <div class="text-xs text-slate-500">Juri</div>
+                <div id="judgeName" class="font-semibold">-</div>
+              </div>
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <div class="text-xs text-slate-500">Outbox</div>
+                <div class="font-semibold"><span id="pendingCount">0</span> pending</div>
+              </div>
+            </div>
+
+            <div class="mt-4 space-y-2">
+              <label class="block text-sm text-slate-600 mb-1">Jenis Lomba</label>
+              <select id="competitionType" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900/20"></select>
+
+              <label class="block text-sm text-slate-600 mb-1">Tim</label>
+              <select id="teamSelect" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900/20"></select>
+
+              <button id="btnResetForm" class="w-full mt-2 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200">
+                <i class="fa-solid fa-rotate-left mr-2"></i>Reset Form
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-2">
+          <div class="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm min-h-[360px]">
+            <div class="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <div class="font-semibold">Form Penilaian</div>
+                <div class="text-xs text-slate-500">Skor 1–<span id="maxStarsLabel">5</span> bintang</div>
+              </div>
+            </div>
+
+            <div id="noTeamSelected" class="p-10 rounded-2xl border border-dashed border-slate-300 text-center text-slate-500">
+              Pilih <b>Jenis Lomba</b> dan <b>Tim</b> untuk mulai menilai.
+            </div>
+
+            <div id="criteriaContainer" class="space-y-4 hidden"></div>
+          </div>
+        </div>
+
+        <div class="mt-4 p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
+            <div class="flex items-center justify-between">
+              <div class="font-semibold">Aksi</div>
+              <div id="lockBadge" class="badge bg-slate-100 text-slate-700 hidden"><i class="fa-solid fa-lock"></i> Locked</div>
+            </div>
+            <button id="btnSaveRating" class="hidden mt-3 px-4 py-3 rounded-2xl bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm">
+              <i class="fa-solid fa-floppy-disk mr-2"></i>Simpan Penilaian          
+            </button>
+            <button id="btnSyncNow" class="w-full mt-3 px-4 py-3 rounded-2xl bg-slate-900 text-white hover:bg-slate-800 shadow-sm">
+                <i class="fa-solid fa-floppy-disk mr-2"></i><span>Simpan Penilaian</span>
+            </button>
+            <p class="text-xs text-slate-500 mt-3 leading-relaxed">
+              * Jika gagal Sync, data masuk ke tab <b>Gagal Sync</b>.
+            </p>
+          </div>
+      </div>
+    </section>
+
+    <!-- Tab: Rekap -->
+    <section id="tab-results" class="tabpane hidden">
+      <div class="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
+        <div class="flex flex-col md:flex-row md:items-end gap-3">
+          <div class="flex-1">
+            <div class="font-semibold">Rekap & Peringkat</div>
+            <div class="text-xs text-slate-500">Filter lomba/juri. Skor = Σ (rating × bobot/100).</div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full md:w-auto">
+            <div>
+              <label class="block text-xs text-slate-600 mb-1">Jenis Lomba</label>
+              <select id="filterCompetition" class="w-full px-3 py-2 rounded-xl border border-slate-200"></select>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-600 mb-1">Juri</label>
+              <select id="filterJudge" class="w-full px-3 py-2 rounded-xl border border-slate-200"></select>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-600 mb-1">Mode</label>
+              <select id="filterMode" class="w-full px-3 py-2 rounded-xl border border-slate-200">
+                <option value="sum">Total (gabung)</option>
+                <option value="avg">Rata-rata antar juri</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-4 overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead class="text-slate-600">
+              <tr class="border-b">
+                <th class="text-left py-2 pr-4">Rank</th>
+                <th class="text-left py-2 pr-4">Lomba</th>
+                <th class="text-left py-2 pr-4">Tim</th>
+                <th class="text-right py-2 pr-4">Skor</th>
+                <th class="text-right py-2 pr-4">Adjustment</th>
+                <th class="text-right py-2 pr-4">Final</th>
+                <th class="text-right py-2 pr-4">Juri</th>
+              </tr>
+            </thead>
+            <tbody id="resultsBody" class="divide-y"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab: Gagal Sync -->
+    <section id="tab-failed" class="tabpane hidden">
+      <div class="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <div class="font-semibold">Antrian Gagal Sync</div>
+          </div>
+          <button id="btnRetryAll" class="px-3 py-2 rounded-xl bg-rose-600 text-white hover:bg-rose-700">
+            <i class="fa-solid fa-rotate mr-2"></i>Retry Semua
+          </button>
+        </div>
+
+        <div id="failedList" class="mt-4 space-y-3"></div>
+      </div>
+    </section>
+
+    <!-- Tab: Admin -->
+    <section id="tab-admin" class="tabpane hidden">
+      <div class="grid lg:grid-cols-3 gap-4">
+        <div class="lg:col-span-1">
+          <div class="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
+            <div class="font-semibold mb-2">Pengaturan Aplikasi</div>
+
+            <label class="block text-sm text-slate-600 mb-1">Judul</label>
+            <input id="cfgTitle" class="w-full px-3 py-2 rounded-xl border border-slate-200" />
+
+            <label class="block text-sm text-slate-600 mb-1 mt-2">Event ID</label>
+            <input id="cfgEventId" class="w-full px-3 py-2 rounded-xl border border-slate-200" />
+
+            <label class="block text-sm text-slate-600 mb-1 mt-2">Max Bintang</label>
+            <input id="cfgMaxStars" type="number" min="3" max="10" class="w-full px-3 py-2 rounded-xl border border-slate-200" />
+
+            <button id="btnSaveConfig" class="w-full mt-3 px-4 py-3 rounded-2xl bg-slate-900 text-white hover:bg-slate-800">
+              <i class="fa-solid fa-cloud-arrow-up mr-2"></i>Simpan Config
+            </button>
+
+            <button id="btnReloadConfig" class="w-full mt-2 px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200">
+              <i class="fa-solid fa-rotate mr-2"></i>Reload dari Server
+            </button>
+          </div>
+
+          <div class="mt-4 p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
+            <div class="font-semibold mb-2">Adjustment (Kesepakatan Juri)</div>
+            <div class="grid grid-cols-1 gap-2">
+              <select id="adjCompetition" class="w-full px-3 py-2 rounded-xl border border-slate-200"></select>
+              <select id="adjTeam" class="w-full px-3 py-2 rounded-xl border border-slate-200"></select>
+              <input id="adjValue" type="number" step="0.01" class="w-full px-3 py-2 rounded-xl border border-slate-200" placeholder="Nilai (+/-)"/>
+              <input id="adjNote" class="w-full px-3 py-2 rounded-xl border border-slate-200" placeholder="Catatan singkat"/>
+              <button id="btnSaveAdjustment" class="w-full px-4 py-3 rounded-2xl bg-emerald-600 text-white hover:bg-emerald-700">
+                <i class="fa-solid fa-check mr-2"></i>Simpan Adjustment
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-2">
+          
+          <div class="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <div class="font-semibold">Editor</div>
+              </div>
+              <button id="btnAddCompetition" class="px-3 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800">
+                <i class="fa-solid fa-plus mr-2"></i>Tambah Lomba
+              </button>
+            </div>
+
+            <div id="cfgBuilder" class="mt-3 space-y-3"></div>
+
+            <!-- Advanced (opsional) -->
+            <div class="mt-4 pt-4 border-t border-slate-200">
+              <button id="btnToggleAdvanced" class="w-full px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-left">
+                <i class="fa-solid fa-code mr-2"></i>Mode Advanced (JSON) <span class="text-xs text-slate-500">(opsional)</span>
+              </button>
+
+              <div id="cfgAdvancedBox" class="mt-3 hidden">
+                <div class="flex items-center justify-between">
+                  <div class="text-sm font-semibold text-slate-700">JSON Config</div>
+                  <button id="btnBeautifyJson" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200">
+                    <i class="fa-solid fa-wand-magic-sparkles mr-2"></i>Rapikan JSON
+                  </button>
+                </div>
+
+                <textarea id="cfgJson" class="mt-3 w-full h-[320px] px-3 py-2 rounded-2xl border border-slate-200 font-mono text-xs"></textarea>
+
+                <div class="mt-3 flex flex-col sm:flex-row gap-2">
+                  <button id="btnApplyJsonToForm" class="flex-1 px-4 py-3 rounded-2xl bg-slate-900 text-white hover:bg-slate-800">
+                    <i class="fa-solid fa-arrow-turn-down mr-2"></i>Terapkan JSON ke Form
+                  </button>
+                  <button id="btnPreviewAdminCalc" class="flex-1 px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200">
+                    <i class="fa-solid fa-eye mr-2"></i>Preview Rekap dari Server
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Login Modal -->
+  <div id="loginModal" class="fixed inset-0 z-40 hidden">
+    <div class="absolute inset-0 bg-black/40"></div>
+    <div class="absolute inset-0 grid place-items-center p-4">
+      <div class="w-full max-w-md p-5 rounded-3xl bg-white shadow-xl">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="font-bold text-lg">Login</div>
+          </div>
+          <button id="btnCloseLogin" class="h-10 w-10 rounded-2xl bg-slate-100 hover:bg-slate-200 grid place-items-center">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <div class="mt-4">
+          <label class="block text-sm text-slate-600 mb-1">NIK STAFF</label>
+          <input id="loginNik" inputmode="numeric" class="w-full px-3 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900/20" placeholder="contoh: 20141234"/>
+          <button id="btnDoLogin" class="w-full mt-3 px-4 py-3 rounded-2xl bg-slate-900 text-white hover:bg-slate-800">
+            <i class="fa-solid fa-right-to-bracket mr-2"></i>Login
+          </button>
+          <div id="loginMsg" class="mt-3 text-sm text-rose-600 hidden"></div>
+        </div>
+
+        <div class="mt-4 p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
+          <b>Catatan:</b> Session tersimpan 24 jam di perangkat ini.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toastHost" class="fixed z-50 top-4 right-4 space-y-2"></div>
+
+<script>
+/* =========================
+   FG Evaluation v5 - Frontend
+========================= */
+
+// === Hardcode URL GAS WebApp (/exec) ===
+// Anda bisa mengganti URL ini sesuai deployment Anda.
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwb7d3idsn4GFxK5pYbuaZa8WZ4DdfiE4yzBGOWLc37RZaG0pi9sbr81EYD6mLcQ6rf/exec";
+
+// Storage keys
+const LS = {
+  device: "fg_eval_v5_device_id",
+  session: "fg_eval_v5_session",
+  config: "fg_eval_v5_config_cache",
+  ratings: "fg_eval_v5_ratings",
+  outbox: "fg_eval_v5_outbox",
+  failed: "fg_eval_v5_failed"
+};
+
+const state = {
+  config: null,
+  session: null,
+  ratings: [],
+  outbox: [],
+  failed: [],
+  adjustments: [],
+  ui: {
+    competitionId: "",
+    teamId: "",
+    openCompIds: {}
+  }
+};
+
+const $ = (q,el=document)=>el.querySelector(q);
+const $$ = (q,el=document)=>Array.from(el.querySelectorAll(q));
+const esc = (s)=>String(s??"").replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
+const uid = ()=> (crypto?.randomUUID ? crypto.randomUUID() : ("id-"+Math.random().toString(16).slice(2)+Date.now()));
+
+function toast(msg, type="info"){
+  const host = $("#toastHost");
+  const color = type==="ok" ? "bg-emerald-600" : type==="warn" ? "bg-amber-600" : type==="err" ? "bg-rose-600" : "bg-slate-900";
+  const el = document.createElement("div");
+  el.className = `text-white ${color} shadow-lg rounded-2xl px-4 py-3 text-sm max-w-sm`;
+  el.innerHTML = `<div class="flex items-start gap-2"><i class="fa-solid ${type==="ok"?"fa-circle-check":type==="err"?"fa-circle-xmark":type==="warn"?"fa-triangle-exclamation":"fa-circle-info"} mt-0.5"></i><div>${esc(msg)}</div></div>`;
+  host.appendChild(el);
+  setTimeout(()=>{ el.classList.add("opacity-0"); el.style.transition="opacity .4s"; }, 2600);
+  setTimeout(()=>{ el.remove(); }, 3200);
+}
+
+function loadLS(){
+  let deviceId = localStorage.getItem(LS.device);
+  if(!deviceId){ deviceId = uid(); localStorage.setItem(LS.device, deviceId); }
+
+  state.session = safeJson(localStorage.getItem(LS.session)) || null;
+  state.config  = safeJson(localStorage.getItem(LS.config)) || null;
+  state.ratings = safeJson(localStorage.getItem(LS.ratings)) || [];
+  state.outbox  = safeJson(localStorage.getItem(LS.outbox)) || [];
+  state.failed  = safeJson(localStorage.getItem(LS.failed)) || [];
+}
+
+function saveLS(){
+  localStorage.setItem(LS.session, JSON.stringify(state.session||null));
+  localStorage.setItem(LS.config, JSON.stringify(state.config||null));
+  localStorage.setItem(LS.ratings, JSON.stringify(state.ratings||[]));
+  localStorage.setItem(LS.outbox, JSON.stringify(state.outbox||[]));
+  localStorage.setItem(LS.failed, JSON.stringify(state.failed||[]));
+}
+
+function safeJson(s){ try{ return JSON.parse(s); }catch{ return null; } }
+
+
+function minifyRatingRecord(r){
+  // Kirim data seperlunya saja agar URL JSONP tidak kepanjangan.
+  // Nama/label bisa dibaca dari config di client; server simpan kolom nama sebagai kosong.
+  return {
+    event_id: r.event_id,
+    date: r.date,
+    judge_nik: r.judge_nik,
+    judge_name: r.judge_name || '',
+    competition_id: r.competition_id,
+    competition_name: r.competition_name || '',
+    category: r.category || '',
+    team_id: r.team_id,
+    team_name: r.team_name || '',
+    criterion_id: r.criterion_id,
+    criterion_name: r.criterion_name || '',
+    weight: (r.weight ?? null),
+    rating: r.rating,
+    comment: r.comment || '',
+    device_id: r.device_id || '',
+    client_id: r.client_id,
+    client_ts: r.client_ts || '',
+    dedupe_key: r.dedupe_key
+  };
+}
+// ===== JSONP API =====
+function apiJsonp(action, params={}, payload=null){
+  return new Promise((resolve,reject)=>{
+    const cb = "FGCB_"+Math.random().toString(16).slice(2);
+    const q = new URLSearchParams();
+    q.set("action", action);
+    if(state.session?.token) q.set("token", state.session.token);
+    for(const [k,v] of Object.entries(params||{})){ if(v!==undefined && v!==null) q.set(k, String(v)); }
+    if(payload!==null){
+            q.set("payload", JSON.stringify(payload));
+}
+    q.set("callback", cb);
+
+    const url = GAS_URL + (GAS_URL.includes("?") ? "&" : "?") + q.toString();
+
+    const script = document.createElement("script");
+    script.src = url;
+    script.async = true;
+
+    const timeout = setTimeout(()=>{
+      cleanup();
+      reject(new Error("Timeout memanggil server"));
+    }, 20000);
+
+    function cleanup(){
+      clearTimeout(timeout);
+      try{ delete window[cb]; }catch{}
+      script.remove();
+    }
+
+    window[cb] = (data)=>{
+      cleanup();
+      if(data && data.ok) resolve(data);
+      else reject(new Error(data?.error || "Server error"));
+    };
+
+    script.onerror = ()=>{
+      cleanup();
+      reject(new Error("Gagal memuat response JSONP"));
+    };
+
+    document.body.appendChild(script);
+  });
+}
+
+// JSONP helper untuk payload besar (bypass limit URL dengan cara chunk)
+async function apiJsonpLarge(action, params={}, payloadObj=null){
+  const payloadStr = payloadObj===null ? "" : JSON.stringify(payloadObj);
+  // Jika kecil, langsung pakai apiJsonp biasa
+  if(payloadStr.length < 1200){
+    return apiJsonp(action, params, payloadObj);
+  }
+  // Chunked upload via JSONP (GET) -> admin.saveConfigChunk
+  const uploadId = "U" + Date.now() + "_" + Math.random().toString(16).slice(2);
+  const chunkSize = 900; // aman utk URL (setelah encode)
+  const total = Math.ceil(payloadStr.length / chunkSize);
+  for(let i=0;i<total;i++){
+    const chunk = payloadStr.slice(i*chunkSize, (i+1)*chunkSize);
+    await apiJsonp("admin.saveConfigChunk", { upload_id: uploadId, idx: i, total }, { chunk });
+  }
+  // response final dikirim pada chunk terakhir
+  return { ok:true, upload_id: uploadId };
+}
+
+
+// ===== Config =====
+async function refreshConfig(){
+  try{
+    const res = await apiJsonp("public.getConfig");
+    state.config = res.config;
+    saveLS();
+    applyBranding();
+    buildSelectors();
+    toast("Config berhasil dimuat", "ok");
+  }catch(err){
+    if(!state.config){
+      state.config = {
+        title:"Penilaian Family Gathering",
+        event_id:"FG",
+        max_stars:5,
+        competitions:[]
+      };
+    }
+    applyBranding();
+    buildSelectors();
+    toast("Gagal memuat config server. Pakai cache/local.", "warn");
+  }
+}
+
+function applyBranding(){
+  const cfg = state.config || {};
+  $("#appTitle").textContent = cfg.title || "Penilaian Family Gathering";
+  document.title = cfg.title || "Penilaian";
+  $("#eventIdLabel").textContent = cfg.event_id || "-";
+  $("#maxStarsLabel").textContent = cfg.max_stars || 5;
+  $("#maxStarsLabel").textContent = cfg.max_stars || 5;
+}
+
+// ===== Auth =====
+function openLogin(){
+  $("#loginModal").classList.remove("hidden");
+  $("#loginNik").value = "";
+  $("#loginMsg").classList.add("hidden");
+  $("#loginNik").focus();
+}
+function closeLogin(){
+  $("#loginModal").classList.add("hidden");
+}
+
+async function doLogin(){
+  const nik = $("#loginNik").value.trim();
+  if(!nik){ showLoginMsg("NIK wajib diisi"); return; }
+  $("#btnDoLogin").disabled = true;
+  try{
+    const res = await apiJsonp("auth.login", { nik });
+    state.session = { token: res.token, exp: res.exp, profile: res.profile };
+    saveLS();
+    closeLogin();
+    refreshSessionUI();
+    toast("Login sukses: " + (res.profile?.name || nik), "ok");
+    await refreshAdjustments();
+    renderAll();
+  }catch(err){
+    showLoginMsg(err.message || "Login gagal");
+  }finally{
+    $("#btnDoLogin").disabled = false;
+  }
+}
+function showLoginMsg(msg){
+  const el = $("#loginMsg");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+}
+
+function refreshSessionUI(){
+  const p = state.session?.profile;
+  $("#userLabel").textContent = p ? (p.name || p.nik) : "Login";
+  $("#judgeName").textContent = p ? (p.name || "-") : "-";
+
+  const isAdmin = p?.role === "admin";
+  $("#tabAdminBtn").classList.toggle("hidden", !isAdmin);
+
+  if(isAdmin){
+    $("#cfgTitle").value = state.config?.title || "";
+    $("#cfgEventId").value = state.config?.event_id || "";
+    $("#cfgMaxStars").value = state.config?.max_stars || 5;
+    state.config = ensureConfigShape_(state.config || {});
+    syncJsonFromState_();
+    renderConfigBuilder_();
+  }
+}
+
+// ===== UI Build =====
+function buildSelectors(){
+  const cfg = state.config || { competitions:[] };
+  const compSel = $("#competitionType");
+  const teamSel = $("#teamSelect");
+  compSel.innerHTML = `<option value="">-- pilih lomba --</option>` + cfg.competitions.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}${c.category? " • "+esc(c.category):""}</option>`).join("");
+  teamSel.innerHTML = `<option value="">-- pilih tim --</option>`;
+
+  // Rekap filters
+  const filtComp = $("#filterCompetition");
+  filtComp.innerHTML = `<option value="all">Semua</option>` + cfg.competitions.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("");
+
+  // Admin adjustment selectors
+  const adjComp = $("#adjCompetition");
+  if(adjComp){
+    adjComp.innerHTML = `<option value="">-- pilih lomba --</option>` + cfg.competitions.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("");
+  }
+  updateAdminAdjTeams();
+}
+
+function updateTeams(){
+  const cfg = state.config || { competitions:[] };
+  const compId = $("#competitionType").value;
+  state.ui.competitionId = compId;
+  const comp = cfg.competitions.find(c=>c.id===compId);
+  const teamSel = $("#teamSelect");
+  const teams = comp?.teams || [];
+  teamSel.innerHTML = `<option value="">-- pilih tim --</option>` + teams.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("");
+  teamSel.value = "";
+  state.ui.teamId = "";
+  renderCriteria();
+}
+
+function renderCriteria(){
+  const cfg = state.config || { competitions:[] };
+  const compId = $("#competitionType").value;
+  const teamId = $("#teamSelect").value;
+  state.ui.teamId = teamId;
+  const comp = cfg.competitions.find(c=>c.id===compId);
+
+  const box = $("#criteriaContainer");
+  if(!compId || !teamId || !comp){
+    $("#noTeamSelected").classList.remove("hidden");
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    return;
+  }
+  $("#noTeamSelected").classList.add("hidden");
+  box.classList.remove("hidden");
+  box.innerHTML = "";
+
+  const maxStars = Number(state.config?.max_stars||5);
+
+  (comp.criteria||[]).forEach(cr=>{
+    const card = document.createElement("div");
+    card.className = "p-4 rounded-2xl border border-slate-200 bg-slate-50";
+    card.dataset.criterionId = cr.id;
+
+    const desc = cr.desc || {};
+    const descRow = [1,2,3,4,5].slice(0,maxStars).map(n=>`<div class="text-[11px] text-slate-500"><b>${n}</b>: ${esc(desc[n]||"")}</div>`).join("");
+
+    card.innerHTML = `
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <div class="font-semibold">${esc(cr.name)} <span class="text-xs text-slate-500">(${Number(cr.weight||0)}%)</span></div>
+          <div class="mt-2 flex items-center gap-1" data-stars>
+            ${Array.from({length:maxStars}).map((_,i)=>`<i class="fa-regular fa-star star text-amber-500 text-xl" data-star="${i+1}"></i>`).join("")}
+            <span class="ml-2 text-sm text-slate-600">Nilai: <b data-val>0</b></span>
+          </div>
+        </div>
+        <div class="w-40 hidden md:block">
+          <div class="text-xs text-slate-500">Panduan</div>
+          <div class="mt-1 space-y-1 max-h-24 overflow-auto pr-1">${descRow || '<div class="text-xs text-slate-400">-</div>'}</div>
+        </div>
+      </div>
+      <div class="mt-3">
+        <label class="text-xs text-slate-600">Komentar (opsional)</label>
+        <input class="w-full mt-1 px-3 py-2 rounded-xl border border-slate-200" data-comment placeholder="contoh: vokal kurang kompak"/>
+      </div>
+    `;
+
+    // star click
+    card.querySelectorAll(".star").forEach(st=>{
+      st.addEventListener("click", ()=>{
+        const v = Number(st.dataset.star);
+        setStars(card, v, maxStars);
+      });
+    });
+
+    // init from existing local rating
+    const existing = findLocalByKey(compId, teamId, cr.id);
+    if(existing){
+      setStars(card, existing.rating, maxStars);
+      const cmt = card.querySelector("[data-comment]");
+      if(cmt) cmt.value = existing.comment || "";
+    }
+
+    box.appendChild(card);
+  });
+}
+
+function setStars(card, val, maxStars){
+  const stars = card.querySelectorAll(".star");
+  stars.forEach((el,i)=>{
+    el.className = (i < val) ? "fa-solid fa-star star text-amber-500 text-xl" : "fa-regular fa-star star text-amber-500 text-xl";
+  });
+  card.querySelector("[data-val]").textContent = String(val||0);
+}
+
+// ===== Data model =====
+function baseKey(compId, teamId, criterionId){
+  const eventId = state.config?.event_id || "FG";
+  const date = $("#eventDate").value || new Date().toISOString().slice(0,10);
+  const judgeNik = state.session?.profile?.nik || "UNKNOWN";
+  return `${eventId}|${date}|${compId}|${teamId}|${criterionId}|${judgeNik}`;
+}
+
+function findLocalByKey(compId, teamId, criterionId){
+  const k = baseKey(compId, teamId, criterionId);
+  return state.ratings.find(r=>r.dedupe_key===k) || null;
+}
+
+function upsertLocal(rec){
+  const idx = state.ratings.findIndex(r=>r.dedupe_key===rec.dedupe_key);
+  if(idx>=0) state.ratings[idx] = rec;
+  else state.ratings.push(rec);
+}
+
+function addToOutbox(rec){
+  // dedupe outbox by client_id
+  if(!state.outbox.some(x=>x.client_id===rec.client_id)) state.outbox.push(rec);
+}
+
+function refreshCounters(){
+  $("#pendingCount").textContent = String(state.outbox.length);
+  $("#failedCount").textContent = `(${state.failed.length})`;
+}
+
+// ===== Save rating =====
+function resetForm(){
+  $("#criteriaContainer").querySelectorAll("[data-stars]").forEach(card=>{
+    // nothing
+  });
+  renderCriteria();
+  toast("Form direset", "ok");
+}
+
+
+
+function setBtnBusy(btn, busy, workingText){
+  if(!btn) return;
+  if(busy){
+    if(btn.dataset._busy === "1") return;
+    btn.dataset._busy = "1";
+    btn.dataset._html = btn.innerHTML;
+    btn.disabled = true;
+    btn.classList.add("opacity-80","cursor-not-allowed");
+    const label = workingText || "Memproses…";
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>' + label;
+  }else{
+    if(btn.dataset._busy !== "1") return;
+    btn.dataset._busy = "0";
+    btn.disabled = false;
+    btn.classList.remove("opacity-80","cursor-not-allowed");
+    btn.innerHTML = btn.dataset._html || btn.innerHTML;
+  }
+}
+async function withBtnBusy(btn, workingText, fn){
+  setBtnBusy(btn, true, workingText);
+  try{ return await fn(); }
+  finally{ setBtnBusy(btn, false); }
+}
+let _autoSyncTimer = null;
+function scheduleAutoSync(delayMs=1800){
+  if(_autoSyncTimer) clearTimeout(_autoSyncTimer);
+  _autoSyncTimer = setTimeout(async ()=>{
+    _autoSyncTimer = null;
+    try{
+      if(!navigator.onLine) return;
+      if(!state.session?.token) return;
+      if(!state.outbox || state.outbox.length===0) return;
+      await syncNow(); // sudah punya anti-double
+    }catch(e){
+      // biarkan gagal; user bisa trigger manual / retry dari tab gagal sync
+    }
+  }, delayMs);
+}
+function saveRating(){
+  if(!state.session?.token){ toast("Silakan login dulu", "warn"); openLogin(); return; }
+
+  const date = $("#eventDate").value;
+  const compId = $("#competitionType").value;
+  const teamId = $("#teamSelect").value;
+  if(!date){ toast("Tanggal penilaian wajib", "warn"); return; }
+  if(!compId || !teamId){ toast("Pilih lomba dan tim dulu", "warn"); return; }
+
+  const cfg = state.config;
+  const comp = cfg.competitions.find(c=>c.id===compId);
+  const team = comp?.teams?.find(t=>t.id===teamId);
+  if(!comp || !team){ toast("Config lomba/tim tidak valid", "err"); return; }
+
+  const cards = $$("#criteriaContainer > div");
+  if(cards.length===0){ toast("Kriteria belum ada", "warn"); return; }
+
+  const deviceId = localStorage.getItem(LS.device);
+  const judge = state.session.profile;
+
+  const records = [];
+  const maxStars = Number(cfg.max_stars||5);
+
+  for(const card of cards){
+    const criterionId = card.dataset.criterionId;
+    const val = Number(card.querySelector("[data-val]")?.textContent||0);
+    if(!(val>=1 && val<=maxStars)){ toast("Semua kriteria harus diberi nilai", "warn"); return; }
+    const comment = card.querySelector("[data-comment]")?.value?.trim() || "";
+
+    const cr = comp.criteria.find(x=>x.id===criterionId);
+    const rec = {
+      event_id: cfg.event_id,
+      date,
+      judge_nik: judge.nik,
+      judge_name: judge.name,
+      competition_id: comp.id,
+      competition_name: comp.name,
+      category: comp.category || "",
+      team_id: team.id,
+      team_name: team.name,
+      criterion_id: cr.id,
+      criterion_name: cr.name,
+      weight: Number(cr.weight||0),
+      rating: val,
+      comment,
+      device_id: deviceId,
+      client_id: uid(),
+      client_ts: new Date().toISOString()
+    };
+    rec.dedupe_key = baseKey(compId, teamId, criterionId);
+
+    // upsert local by dedupe_key, but keep stable client_id per update
+    const existing = state.ratings.find(r=>r.dedupe_key===rec.dedupe_key);
+    if(existing){
+      rec.client_id = existing.client_id; // stable
+      rec.client_ts = new Date().toISOString();
+    }
+
+    upsertLocal(rec);
+    addToOutbox(rec);
+    records.push(rec);
+  }
+
+  saveLS();
+  refreshCounters();
+  toast("Penilaian tersimpan di perangkat (pending sync)", "ok");
+  renderResults();
+}
+
+// ✅ FIX: missing function called by syncNow()
+function renderFailedList(failed){
+  try{
+    const list = Array.isArray(failed) ? failed : [];
+    // cari container UI (coba beberapa id yang mungkin ada di template Anda)
+    const host =
+      document.getElementById('failed-list') ||
+      document.getElementById('sync-failed-list') ||
+      document.getElementById('failedSyncList') ||
+      document.getElementById('fg-failed-list');
+
+    const box =
+      document.getElementById('failed-box') ||
+      document.getElementById('sync-failed-box') ||
+      document.getElementById('failedSyncBox') ||
+      document.getElementById('fg-failed-box');
+
+    // kalau UI panel gagal tidak ada, cukup exit tanpa error
+    if(!host && !box) return;
+
+    // helper escape (pakai yang sudah ada bila tersedia)
+    const esc = (window.utils && typeof window.utils.htmlEsc === 'function')
+      ? window.utils.htmlEsc
+      : (s)=>String(s??'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+
+    // jika tidak ada yang gagal
+    if(list.length === 0){
+      if(host) host.innerHTML = `<div class="text-sm text-gray-500">Tidak ada data gagal sync.</div>`;
+      if(box) box.classList.add('hidden');
+      return;
+    }
+
+    // ada data gagal → tampilkan box + daftar ringkas
+    if(box) box.classList.remove('hidden');
+    if(host){
+      host.innerHTML = list.map((r, i) => {
+        const dk = esc(r?.dedupe_key || '');
+        const team = esc(r?.team_name || r?.team_id || '');
+        const crit = esc(r?.criterion_name || r?.criterion_id || '');
+        const msg = esc(r?.error || r?.message || '');
+        return `
+          <div class="border rounded-lg p-2 mb-2">
+            <div class="text-xs text-gray-500 mb-1">#${i+1} ${dk}</div>
+            <div class="text-sm font-semibold">${team} — ${crit}</div>
+            ${msg ? `<div class="text-xs text-red-600 mt-1">${msg}</div>` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+  }catch(e){
+    console.warn('renderFailedList fallback error:', e);
+  }
+}
+
+// ===== Sync =====
+async function syncNow(){
+    saveRating();
+  if(syncNow._busy){ toast("Sync sedang berjalan…", "warn"); return; }
+  syncNow._busy = true;
+  try{
+    if(!state.session?.token){ toast("Silakan login dulu", "warn"); openLogin(); return; }
+    if(state.outbox.length===0){ toast("Tidak ada data pending", "ok"); return; }
+    if(!navigator.onLine){ toast("Anda sedang offline. Data tetap aman.", "warn"); return; }
+
+    let pending = [...state.outbox];
+    let okCount = 0, failCount = 0;
+
+    // Mulai dari batch kecil; jika masih kepanjangan/abort, otomatis diperkecil sampai 1 record.
+    let batchSize = 12;
+
+    while(pending.length){
+      const batch = pending.slice(0, batchSize).map(minifyRatingRecord);
+
+      try{
+        const res = await apiJsonp("ratings.saveBatch", {}, { records: batch });
+        okCount += (res.saved || batch.length);
+
+        // remove from outbox by client_id (pakai sumber pending, bukan batch minify)
+        const savedIds = new Set(pending.slice(0,batchSize).map(r=>r.client_id));
+        state.outbox = state.outbox.filter(r=>!savedIds.has(r.client_id));
+        saveLS();
+        refreshCounters();
+
+        // potong pending sesuai batch yang sukses
+        pending = pending.slice(batchSize);
+
+        // jika sukses, boleh naikkan batch sedikit (biar cepat) tapi tetap aman
+        if(batchSize < 20) batchSize += 2;
+
+      }catch(err){
+        // Jika abort/URL kepanjangan, kecilkan batch
+        if(batchSize > 1){
+          batchSize = Math.max(1, Math.floor(batchSize/2));
+          continue;
+        }
+
+        // batchSize sudah 1 tapi tetap gagal -> lempar ke failed (agar bisa retry)
+        const one = pending[0];
+        failCount += 1;
+        state.failed.push({
+          id: uid(),
+          at: new Date().toISOString(),
+          reason: String(err?.message || err || "sync failed"),
+          records: [one]
+        });
+        // buang 1 record dari outbox & pending
+        state.outbox = state.outbox.filter(r=>r.client_id !== one.client_id);
+        saveLS();
+        refreshCounters();
+        pending = pending.slice(1);
+      }
+    }
+
+    if(okCount && !failCount) toast(`✅ Sync sukses: ${okCount} record`, "ok");
+    else if(okCount && failCount) toast(`⚠️ Sync sebagian: ${okCount} sukses, ${failCount} gagal`, "warn");
+    else toast(`❌ Sync gagal (${failCount})`, "bad");
+
+    renderFailedList();
+  }finally{
+    syncNow._busy = false;
+  }
+}
+
+// ===== Failed Sync UI =====
+function renderFailed(){
+  const box = $("#failedList");
+  box.innerHTML = "";
+  if(state.failed.length===0){
+    box.innerHTML = `<div class="p-6 rounded-2xl border border-dashed border-slate-300 text-center text-slate-500">Tidak ada antrian gagal.</div>`;
+    return;
+  }
+  state.failed.slice().reverse().forEach(item=>{
+    const el = document.createElement("div");
+    el.className = "p-4 rounded-2xl border border-slate-200 bg-slate-50";
+    el.innerHTML = `
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <div class="font-semibold text-rose-700">${esc(item.error)}</div>
+          <div class="text-xs text-slate-500">Waktu: ${esc(item.at)} • Records: <b>${item.records.length}</b></div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="btnRetry px-3 py-2 rounded-xl bg-rose-600 text-white hover:bg-rose-700" data-id="${esc(item.id)}"><i class="fa-solid fa-rotate mr-2"></i>Retry</button>
+          <button class="btnRestore px-3 py-2 rounded-xl bg-slate-200 hover:bg-slate-300" data-id="${esc(item.id)}"><i class="fa-solid fa-inbox mr-2"></i>Kembalikan ke Pending</button>
+        </div>
+      </div>
+      <div class="mt-3 text-xs text-slate-600">
+        Contoh: ${esc(item.records[0]?.competition_name||"-")} • ${esc(item.records[0]?.team_name||"-")} • ${esc(item.records[0]?.date||"-")}
+      </div>
+    `;
+    box.appendChild(el);
+  });
+
+  box.querySelectorAll(".btnRetry").forEach(btn=>{
+    btn.addEventListener("click", ()=> retryFailed(btn.dataset.id));
+  });
+  box.querySelectorAll(".btnRestore").forEach(btn=>{
+    btn.addEventListener("click", ()=> restoreFailed(btn.dataset.id));
+  });
+}
+
+async function retryFailed(id){
+  const item = state.failed.find(x=>x.id===id);
+  if(!item) return;
+  try{
+    const chunkSize = 40;
+    const recs = item.records || [];
+    for(let i=0;i<recs.length;i+=chunkSize){
+      const chunk = recs.slice(i,i+chunkSize);
+      await apiJsonp("ratings.saveBatch", {}, { records: chunk });
+    }
+    state.failed = state.failed.filter(x=>x.id!==id);
+    saveLS();
+    refreshCounters();
+    renderFailed();
+    toast("Retry sukses", "ok");
+  }catch(err){
+    toast("Retry gagal: " + err.message, "err");
+  }
+}
+
+function restoreFailed(id){
+  const item = state.failed.find(x=>x.id===id);
+  if(!item) return;
+  (item.records||[]).forEach(r=> addToOutbox(r));
+  state.failed = state.failed.filter(x=>x.id!==id);
+  saveLS();
+  refreshCounters();
+  renderFailed();
+  toast("Dikembalikan ke pending", "ok");
+}
+
+async function retryAll(){
+  const ids = state.failed.map(x=>x.id);
+  for(const id of ids){
+    await retryFailed(id);
+  }
+}
+
+// ===== Rekap =====
+function computeResults({compFilter="all", judgeFilter="all", mode="sum"}={}){
+  const cfg = state.config || { competitions:[] };
+  const ratings = state.ratings;
+
+  // adjustments from server cached
+  const adj = state.adjustments || [];
+
+  // build judge list
+  const judgeSet = new Set(ratings.map(r=>r.judge_nik).filter(Boolean));
+
+  // filter ratings
+  const filtered = ratings.filter(r=>{
+    if(compFilter!=="all" && r.competition_id!==compFilter) return false;
+    if(judgeFilter!=="all" && r.judge_nik!==judgeFilter) return false;
+    return true;
+  });
+
+  // group by competition+team
+  const grp = {};
+  for(const r of filtered){
+    const key = r.competition_id+"|"+r.team_id;
+    if(!grp[key]) grp[key] = { competition_id:r.competition_id, competition_name:r.competition_name, team_id:r.team_id, team_name:r.team_name, category:r.category, byJudge:{} };
+    if(!grp[key].byJudge[r.judge_nik]) grp[key].byJudge[r.judge_nik] = [];
+    grp[key].byJudge[r.judge_nik].push(r);
+  }
+
+  // score per group
+  const rows = Object.values(grp).map(g=>{
+    const judgeKeys = Object.keys(g.byJudge);
+    const perJudgeScores = judgeKeys.map(j=>{
+      const arr = g.byJudge[j];
+      let total = 0;
+      for(const r of arr){
+        total += (Number(r.rating||0) * (Number(r.weight||0)/100));
+      }
+      return total;
+    });
+    let score = 0;
+    if(mode==="avg"){
+      score = perJudgeScores.length ? perJudgeScores.reduce((a,b)=>a+b,0)/perJudgeScores.length : 0;
+    }else{
+      score = perJudgeScores.reduce((a,b)=>a+b,0);
+    }
+
+    const adjVal = adj
+      .filter(a=>a.event_id=== (state.config?.event_id||"") && a.competition_id===g.competition_id && a.team_id===g.team_id)
+      .reduce((s,a)=>s + (Number(a.value||0)||0), 0);
+
+    const finalScore = score + adjVal;
+
+    return {
+      ...g,
+      score,
+      adj: adjVal,
+      final: finalScore,
+      judgeCount: judgeKeys.length
+    };
+  });
+
+  // sort
+  rows.sort((a,b)=> b.final - a.final);
+  rows.forEach((r,i)=> r.rank = i+1);
+
+  return { rows, judgeSet: Array.from(judgeSet) };
+}
+
+function renderResults(){
+  const comp = $("#filterCompetition").value || "all";
+  const judge = $("#filterJudge").value || "all";
+  const mode = $("#filterMode").value || "sum";
+
+  const { rows, judgeSet } = computeResults({ compFilter: comp, judgeFilter: judge, mode });
+
+  // update judge filter options
+  const judgeSel = $("#filterJudge");
+  const cur = judgeSel.value || "all";
+  const opts = [`<option value="all">Semua</option>`].concat(judgeSet.map(j=>`<option value="${esc(j)}">${esc(j)}</option>`));
+  judgeSel.innerHTML = opts.join("");
+  judgeSel.value = judgeSet.includes(cur) ? cur : "all";
+
+  const body = $("#resultsBody");
+  body.innerHTML = "";
+
+  if(rows.length===0){
+    body.innerHTML = `<tr><td colspan="7" class="py-10 text-center text-slate-500">Belum ada data.</td></tr>`;
+    return;
+  }
+
+  for(const r of rows){
+    const badge = r.rank===1 ? "bg-amber-100 text-amber-800" : r.rank===2 ? "bg-slate-100 text-slate-700" : r.rank===3 ? "bg-orange-100 text-orange-800" : "bg-slate-50 text-slate-600";
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="py-2 pr-4"><span class="badge ${badge}"><i class="fa-solid fa-medal"></i>#${r.rank}</span></td>
+      <td class="py-2 pr-4">${esc(r.competition_name||r.competition_id)}</td>
+      <td class="py-2 pr-4 font-semibold">${esc(r.team_name||r.team_id)}</td>
+      <td class="py-2 pr-4 text-right">${r.score.toFixed(2)}</td>
+      <td class="py-2 pr-4 text-right">${r.adj.toFixed(2)}</td>
+      <td class="py-2 pr-4 text-right font-bold">${r.final.toFixed(2)}</td>
+      <td class="py-2 pr-4 text-right">${r.judgeCount}</td>
+    `;
+    body.appendChild(tr);
+  }
+}
+
+// ===== Export =====
+function exportXlsx(){
+  const cfg = state.config || {};
+  const rows = state.ratings.map(r=>({
+    event_id: r.event_id,
+    date: r.date,
+    judge_nik: r.judge_nik,
+    judge_name: r.judge_name,
+    competition: r.competition_name,
+    category: r.category,
+    team: r.team_name,
+    criterion: r.criterion_name,
+    weight: r.weight,
+    rating: r.rating,
+    comment: r.comment,
+    device_id: r.device_id,
+    client_id: r.client_id,
+    client_ts: r.client_ts,
+    dedupe_key: r.dedupe_key
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "ratings");
+  const fname = `FG_Ratings_${(cfg.event_id||"FG")}_${new Date().toISOString().slice(0,10)}.xlsx`;
+  XLSX.writeFile(wb, fname);
+  toast("Export XLSX dibuat", "ok");
+}
+
+// ===== Admin functions =====
+function updateAdminAdjTeams(){
+  const cfg = state.config || { competitions:[] };
+  const compId = $("#adjCompetition")?.value || "";
+  const comp = cfg.competitions.find(c=>c.id===compId);
+  const teams = comp?.teams || [];
+  const teamSel = $("#adjTeam");
+  if(teamSel) teamSel.innerHTML = `<option value="">-- pilih tim --</option>` + teams.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("");
+}
+
+
+async function saveConfigFromAdmin(){
+  try{
+    if(state.session?.profile?.role!=="admin"){ toast("Akses admin diperlukan", "err"); return; }
+
+    const title = $("#cfgTitle").value.trim();
+    const eventId = $("#cfgEventId").value.trim();
+    const maxStars = Number($("#cfgMaxStars").value||5) || 5;
+
+    // Default: ambil dari state (builder). Advanced: boleh override dari JSON jika user sengaja buka mode advanced.
+    let cfg = ensureConfigShape_(state.config || {});
+    const advBox = $("#cfgAdvancedBox");
+    const advOpen = advBox && !advBox.classList.contains("hidden");
+    if(advOpen){
+      try{
+        const obj = JSON.parse($("#cfgJson").value);
+        cfg = ensureConfigShape_(obj);
+      }catch(_){
+        // kalau JSON invalid, tetap pakai builder
+      }
+    }
+
+    cfg.title = title || cfg.title || "Penilaian Family Gathering";
+    cfg.event_id = eventId || cfg.event_id || "FG";
+    cfg.max_stars = maxStars;
+
+    // strict validation IDs (lebih ketat)
+    const idErrs = validateIdsStrict_(cfg);
+    if(idErrs.length){
+      toast("Tidak bisa simpan: " + idErrs[0].msg, "err");
+      // highlight jika ada builder terbuka
+      markDupIdsUI_();
+      return;
+    }
+
+    // warning bobot
+    const bad = (cfg.competitions||[]).filter(c => Math.round(weightSum_(c)*100)/100 !== 100);
+    if(bad.length){
+      toast("Warning: ada lomba dengan total bobot ≠ 100. Tetap bisa simpan, tapi sebaiknya diperbaiki.", "warn");
+    }
+
+    await apiJsonpLarge("admin.saveConfig", {}, { config: cfg });
+    state.config = cfg;
+    saveLS();
+    applyBranding();
+    buildSelectors();
+    refreshSessionUI();
+    syncJsonFromState_();
+    renderConfigBuilder_();
+    toast("Config tersimpan ke server", "ok");
+  }catch(err){
+    toast("Gagal simpan config: " + err.message, "err");
+  }
+}
+
+
+async function reloadConfigAdmin(){
+  await refreshConfig();
+  refreshSessionUI();
+}
+
+function beautifyJson(){
+  try{
+    const obj = JSON.parse($("#cfgJson").value);
+    $("#cfgJson").value = JSON.stringify(obj, null, 2);
+    toast("JSON dirapikan", "ok");
+  }catch(err){
+    toast("JSON tidak valid", "err");
+  }
+}
+
+
+function applyJsonToForm(){
+  try{
+    const obj = JSON.parse($("#cfgJson").value);
+    // jadikan config aktif (sehingga builder ikut berubah)
+    state.config = ensureConfigShape_(obj);
+    $("#cfgTitle").value = state.config.title || "";
+    $("#cfgEventId").value = state.config.event_id || "";
+    $("#cfgMaxStars").value = state.config.max_stars || 5;
+    syncJsonFromState_();
+    renderConfigBuilder_();
+    buildSelectors();
+    toast("Config diterapkan dari JSON", "ok");
+  }catch(err){
+    toast("JSON tidak valid", "err");
+  }
+}
+
+/* =========================================================
+   ✅ CONFIG BUILDER (VISUAL) - KISS
+   - Admin bisa edit lomba, tim, kriteria, bobot & deskripsi
+   - Semua perubahan langsung mengubah state.config (belum tersimpan
+     ke server sampai tombol "Simpan Config")
+========================================================= */
+
+function ensureConfigShape_(cfg){
+  const out = cfg && typeof cfg === "object" ? cfg : {};
+  if(!out.title) out.title = "Penilaian Family Gathering";
+  if(!out.event_id) out.event_id = "FG";
+  out.max_stars = Number(out.max_stars||5) || 5;
+  if(!Array.isArray(out.competitions)) out.competitions = [];
+  // normalize children arrays
+  out.competitions.forEach(c=>{
+    if(!c._key) c._key = uid();
+    if(!c.id) c.id = normalizeId_(c.name||"LOMBA");
+    if(!c.name) c.name = c.id;
+    if(!Array.isArray(c.teams)) c.teams = [];
+    if(!Array.isArray(c.criteria)) c.criteria = [];
+    c.teams.forEach(t=>{
+      if(!t.id) t.id = normalizeId_(t.name||"TIM");
+      if(!t.name) t.name = t.id;
+    });
+    c.criteria.forEach(cr=>{
+      if(!cr.id) cr.id = normalizeId_(cr.name||"KRITERIA");
+      if(!cr.name) cr.name = cr.id;
+      cr.weight = Number(cr.weight||0) || 0;
+      if(!cr.desc || typeof cr.desc!=="object") cr.desc = {};
+    });
+  });
+  return out;
+}
+
+function normalizeId_(s){
+  return String(s||"")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g,"_")
+    .replace(/[^A-Z0-9_]/g,"")
+    .slice(0,40) || ("ID_"+Math.random().toString(16).slice(2,8).toUpperCase());
+}
+
+
+function deepClone_(obj){
+  return JSON.parse(JSON.stringify(obj || {}));
+}
+
+function makeUniqueId_(baseId, existsFn){
+  let id = normalizeId_(baseId || "ID");
+  if(!existsFn(id)) return id;
+  let n = 2;
+  while(n < 999){
+    const cand = `${id}_${n}`;
+    if(!existsFn(cand)) return cand;
+    n++;
+  }
+  return `${id}_${Math.random().toString(16).slice(2,6).toUpperCase()}`;
+}
+
+function auto100Weights_(comp){
+  const list = comp?.criteria || [];
+  if(!list.length) throw new Error("Belum ada kriteria.");
+  // weights numeric
+  const w = list.map(c=>Number(c.weight||0) || 0);
+  const sum = w.reduce((a,b)=>a+b,0);
+
+  const scaleToInt = 10000; // 2 decimals
+  let ints = [];
+  if(sum > 0){
+    ints = w.map(x=>Math.round((x/sum)*100*scaleToInt));
+  }else{
+    // equal split
+    const base = Math.floor((100*scaleToInt)/list.length);
+    ints = Array(list.length).fill(base);
+  }
+  // fix exact total
+  let total = ints.reduce((a,b)=>a+b,0);
+  const target = 100*scaleToInt;
+  let diff = target - total;
+  // adjust last element
+  ints[ints.length-1] += diff;
+  // write back as 2 decimals (trim if integer)
+  for(let i=0;i<list.length;i++){
+    list[i].weight = Math.round((ints[i]/scaleToInt)*100)/100;
+  }
+}
+
+function validateIdsStrict_(cfg){
+  const errs = [];
+  const compIds = new Set();
+  (cfg.competitions||[]).forEach((c,ci)=>{
+    const cid = normalizeId_(c.id);
+    if(!cid) errs.push({msg:"ID lomba kosong", path:`competitions[${ci}].id`});
+    if(compIds.has(cid)) errs.push({msg:`ID lomba duplikat: ${cid}`, path:`competitions[${ci}].id`});
+    compIds.add(cid);
+
+    const teamIds = new Set();
+    (c.teams||[]).forEach((t,ti)=>{
+      const tid = normalizeId_(t.id);
+      if(!tid) errs.push({msg:"ID tim kosong", path:`competitions[${ci}].teams[${ti}].id`});
+      if(teamIds.has(tid)) errs.push({msg:`ID tim duplikat: ${tid} (di lomba ${cid})`, path:`competitions[${ci}].teams[${ti}].id`});
+      teamIds.add(tid);
+    });
+
+    const crIds = new Set();
+    (c.criteria||[]).forEach((cr,ri)=>{
+      const rid = normalizeId_(cr.id);
+      if(!rid) errs.push({msg:"ID kriteria kosong", path:`competitions[${ci}].criteria[${ri}].id`});
+      if(crIds.has(rid)) errs.push({msg:`ID kriteria duplikat: ${rid} (di lomba ${cid})`, path:`competitions[${ci}].criteria[${ri}].id`});
+      crIds.add(rid);
+    });
+  });
+  return errs;
+}
+
+// UI marking: highlight duplicate IDs in builder
+function markDupIdsUI_(){
+  const host = $("#cfgBuilder");
+  if(!host) return;
+  host.querySelectorAll('input[data-field="compId"],input[data-field="teamId"],input[data-field="crId"]').forEach(el=>{
+    el.classList.remove("border-rose-400","ring-2","ring-rose-200");
+    el.removeAttribute("data-dupe");
+  });
+
+  const seen = {};
+  const add = (key, el)=>{
+    (seen[key] = seen[key] || []).push(el);
+  };
+  host.querySelectorAll('[data-comp-idx]').forEach(card=>{
+    const compIdEl = card.querySelector('input[data-field="compId"]');
+    if(compIdEl){
+      const id = normalizeId_(compIdEl.value);
+      if(id) add("comp:"+id, compIdEl);
+    }
+    card.querySelectorAll('tr[data-row="team"] input[data-field="teamId"]').forEach(el=>{
+      const id = normalizeId_(el.value);
+      const compId = normalizeId_(compIdEl?.value || "");
+      if(id) add(`team:${compId}:${id}`, el);
+    });
+    card.querySelectorAll('tr[data-row="cr"] input[data-field="crId"]').forEach(el=>{
+      const id = normalizeId_(el.value);
+      const compId = normalizeId_(compIdEl?.value || "");
+      if(id) add(`cr:${compId}:${id}`, el);
+    });
+  });
+
+  Object.keys(seen).forEach(k=>{
+    const arr = seen[k];
+    if(arr.length > 1){
+      arr.forEach(el=>{
+        el.classList.add("border-rose-400","ring-2","ring-rose-200");
+        el.dataset.dupe = "1";
+      });
+    }
+  });
+}
+
+// Drag-drop reorder (HTML5 drag events) + fallback buttons already provided
+function bindCompSortable_(host){
+  let dragFrom = null;
+
+  host.querySelectorAll('[data-comp-idx]').forEach(card=>{
+    card.addEventListener("dragstart", (e)=>{
+      if(!e.target.closest('[data-handle="comp"]')){ e.preventDefault(); return; }
+      dragFrom = Number(card.dataset.compIdx);
+      card.classList.add("opacity-50");
+      e.dataTransfer.effectAllowed = "move";
+      try{ e.dataTransfer.setData("text/plain", String(dragFrom)); }catch{}
+    });
+    card.addEventListener("dragend", ()=>{
+      card.classList.remove("opacity-50");
+      dragFrom = null;
+      host.querySelectorAll('[data-comp-idx]').forEach(c=>c.classList.remove("ring-2","ring-slate-300"));
+    });
+    card.addEventListener("dragover", (e)=>{
+      e.preventDefault();
+      card.classList.add("ring-2","ring-slate-300");
+      e.dataTransfer.dropEffect = "move";
+    });
+    card.addEventListener("dragleave", ()=>{
+      card.classList.remove("ring-2","ring-slate-300");
+    });
+    card.addEventListener("drop", (e)=>{
+      e.preventDefault();
+      card.classList.remove("ring-2","ring-slate-300");
+      const to = Number(card.dataset.compIdx);
+      const from = dragFrom;
+      if(from==null || isNaN(from) || isNaN(to) || from===to) return;
+      const arr = state.config.competitions;
+      const [item] = arr.splice(from,1);
+      arr.splice(to,0,item);
+      syncJsonFromState_();
+      renderConfigBuilder_();
+    });
+  });
+}
+
+function bindTableSortable_(root, compIdx, kind){
+  const selector = kind==="team" ? 'tr[data-row="team"]' : 'tr[data-row="cr"]';
+  const handleSel = kind==="team" ? '[data-handle="team"]' : '[data-handle="cr"]';
+  let dragRow = null;
+
+  root.querySelectorAll(selector).forEach(row=>{
+    row.addEventListener("dragstart", (e)=>{
+      if(!e.target.closest(handleSel)){ e.preventDefault(); return; }
+      dragRow = row;
+      row.classList.add("opacity-50");
+      e.dataTransfer.effectAllowed = "move";
+      try{ e.dataTransfer.setData("text/plain","1"); }catch{}
+    });
+    row.addEventListener("dragend", ()=>{
+      row.classList.remove("opacity-50");
+      dragRow = null;
+      root.querySelectorAll(selector).forEach(r=>r.classList.remove("ring-1","ring-slate-300"));
+    });
+    row.addEventListener("dragover", (e)=>{
+      e.preventDefault();
+      row.classList.add("ring-1","ring-slate-300");
+      e.dataTransfer.dropEffect = "move";
+    });
+    row.addEventListener("dragleave", ()=>{
+      row.classList.remove("ring-1","ring-slate-300");
+    });
+    row.addEventListener("drop", (e)=>{
+      e.preventDefault();
+      row.classList.remove("ring-1","ring-slate-300");
+      if(!dragRow || dragRow===row) return;
+      const from = kind==="team" ? Number(dragRow.dataset.tidx) : Number(dragRow.dataset.cridx);
+      const to = kind==="team" ? Number(row.dataset.tidx) : Number(row.dataset.cridx);
+      if(isNaN(from) || isNaN(to) || from===to) return;
+      const comp = state.config.competitions[compIdx];
+      const arr = kind==="team" ? comp.teams : comp.criteria;
+      const [item] = arr.splice(from,1);
+      arr.splice(to,0,item);
+      syncJsonFromState_();
+      renderConfigBuilder_();
+    });
+  });
+}
+
+
+
+function syncJsonFromState_(){
+  const cfg = ensureConfigShape_(state.config || {});
+  $("#cfgJson").value = JSON.stringify(cfg, null, 2);
+}
+
+function weightSum_(comp){
+  return (comp?.criteria||[]).reduce((a,c)=>a+Number(c.weight||0),0);
+}
+
+
+function updateCompBadge_(compIdx){
+  try{
+    const host = $("#cfgBuilder");
+    const root = host?.querySelector(`[data-comp-idx="${compIdx}"]`);
+    if(!root) return;
+    const c = state.config?.competitions?.[compIdx];
+    if(!c) return;
+    const sum = weightSum_(c);
+    const sumOk = (Math.round(sum*100)/100) === 100;
+    const badge = root.querySelector(".badge");
+    if(badge){
+      badge.textContent = sumOk ? "Bobot 100 ✅" : ("Total bobot: " + sum + " (harus 100)");
+      badge.classList.toggle("bg-emerald-100", sumOk);
+      badge.classList.toggle("text-emerald-700", sumOk);
+      badge.classList.toggle("bg-amber-100", !sumOk);
+      badge.classList.toggle("text-amber-700", !sumOk);
+    }
+  }catch(_){}
+}
+function renderConfigBuilder_(){
+  const host = $("#cfgBuilder");
+  if(!host) return;
+
+  const p = state.session?.profile;
+  if(!p || p.role!=="admin"){
+    host.innerHTML = `<div class="text-sm text-slate-500">Login admin untuk mengedit.</div>`;
+    return;
+  }
+
+  const cfg = ensureConfigShape_(state.config || {});
+  state.config = cfg;
+
+  if(!cfg.competitions.length){
+    host.innerHTML = `
+      <div class="p-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50">
+        <div class="font-semibold">Belum ada jenis lomba</div>
+        <div class="text-sm text-slate-600 mt-1">
+          Klik <b>Tambah Lomba</b> untuk membuat jenis lomba pertama.
+        </div>
+      </div>`;
+    return;
+  }
+
+  host.innerHTML = cfg.competitions.map((c,idx)=>competitionCardHtml_(c, idx, !!state.ui.openCompIds[c._key]))
+    .join("");
+
+  // bind per-card events
+  cfg.competitions.forEach((c,idx)=>{
+    const cKey = c._key;
+    const root = host.querySelector(`[data-comp-idx="${idx}"]`);
+    if(!root) return;
+
+    // expand/collapse
+    const btnT = root.querySelector('[data-act="toggle"]');
+    const body = root.querySelector('[data-part="body"]');
+    btnT?.addEventListener("click", ()=>{
+      body.classList.toggle("hidden");
+      const isNowOpen = !body.classList.contains("hidden");
+      state.ui.openCompIds[cKey] = isNowOpen;
+      btnT.querySelector("i")?.classList.toggle("fa-chevron-down");
+      btnT.querySelector("i")?.classList.toggle("fa-chevron-up");
+    });
+
+    // delete comp
+    root.querySelector('[data-act="delComp"]')?.addEventListener("click", ()=>{
+      if(!confirm(`Hapus lomba "${c.name}"?`)) return;
+      if(cKey) delete state.ui.openCompIds[cKey];
+      state.config.competitions.splice(idx,1);
+      syncJsonFromState_();
+      renderConfigBuilder_();
+    });
+
+    // comp inputs
+    const inName = root.querySelector('[data-field="compName"]');
+    const inId   = root.querySelector('[data-field="compId"]');
+    inName?.addEventListener("input", ()=>{
+      c.name = inName.value.trim();
+      if(!inId.value.trim()) { c.id = normalizeId_(c.name); inId.value = c.id; }
+      syncJsonFromState_();
+      markDupIdsUI_();
+      root.querySelector('[data-part="headerName"]').textContent = c.name || c.id;
+    });
+    inId?.addEventListener("input", ()=>{
+      c.id = normalizeId_(inId.value);
+      inId.value = c.id;
+      syncJsonFromState_();
+      markDupIdsUI_();
+    });
+
+    // copy / move (KISS)
+    root.querySelector('[data-act="copyComp"]')?.addEventListener("click", ()=>{
+      const copy = deepClone_(c);
+      copy._key = uid();
+      copy.name = (copy.name || copy.id) + " (Copy)";
+      copy.id = makeUniqueId_(normalizeId_(copy.id || copy.name || "LOMBA_COPY"), id => state.config.competitions.some(x=>x.id===id));
+      state.config.competitions.splice(idx+1, 0, copy);
+      if(copy._key){ state.ui.openCompIds[copy._key] = true; }
+      syncJsonFromState_();
+      renderConfigBuilder_();
+      toast("Lomba diduplikasi", "ok");
+    });
+    root.querySelector('[data-act="moveCompUp"]')?.addEventListener("click", ()=>{
+      if(idx<=0) return;
+      const a = state.config.competitions;
+      [a[idx-1], a[idx]] = [a[idx], a[idx-1]];
+      syncJsonFromState_();
+      renderConfigBuilder_();
+    });
+    root.querySelector('[data-act="moveCompDown"]')?.addEventListener("click", ()=>{
+      const a = state.config.competitions;
+      if(idx>=a.length-1) return;
+      [a[idx], a[idx+1]] = [a[idx+1], a[idx]];
+      syncJsonFromState_();
+      renderConfigBuilder_();
+    });
+
+    // add team
+    root.querySelector('[data-act="addTeam"]')?.addEventListener("click", ()=>{
+      c.teams.push({ id: normalizeId_("TIM"), name:"Tim Baru" });
+      syncJsonFromState_();
+      renderConfigBuilder_();
+    });
+
+    // add criterion
+    root.querySelector('[data-act="addCr"]')?.addEventListener("click", ()=>{
+      c.criteria.push({ id: normalizeId_("KRITERIA"), name:"Kriteria Baru", weight:0, desc:{} });
+      syncJsonFromState_();
+      renderConfigBuilder_();
+    });
+
+    // auto 100% weights
+    root.querySelector('[data-act="auto100"]')?.addEventListener("click", ()=>{
+      try{
+        auto100Weights_(c);
+        syncJsonFromState_();
+        renderConfigBuilder_();
+        toast("Bobot diatur otomatis (total 100)", "ok");
+      }catch(err){
+        toast("Auto 100% gagal: " + err.message, "err");
+      }
+    });
+
+    // bind row actions (teams + criteria)
+    root.querySelectorAll('[data-row="team"]').forEach(row=>{
+      const tIdx = Number(row.dataset.tidx);
+      const t = c.teams[tIdx];
+      row.querySelector('[data-act="delTeam"]')?.addEventListener("click", ()=>{
+        if(!confirm(`Hapus tim "${t.name}"?`)) return;
+        c.teams.splice(tIdx,1);
+        syncJsonFromState_();
+        renderConfigBuilder_();
+      });
+      const tn = row.querySelector('[data-field="teamName"]');
+      const tid= row.querySelector('[data-field="teamId"]');
+      tn?.addEventListener("input", ()=>{
+        t.name = tn.value.trim();
+        if(!tid.value.trim()) { t.id = normalizeId_(t.name); tid.value=t.id; }
+        syncJsonFromState_();
+      });
+      tid?.addEventListener("input", ()=>{
+        t.id = normalizeId_(tid.value);
+        tid.value = t.id;
+        syncJsonFromState_();
+      });
+    });
+
+    root.querySelectorAll('[data-row="cr"]').forEach(row=>{
+      const crIdx = Number(row.dataset.cridx);
+      const cr = c.criteria[crIdx];
+
+      row.querySelector('[data-act="delCr"]')?.addEventListener("click", ()=>{
+        if(!confirm(`Hapus kriteria "${cr.name}"?`)) return;
+        c.criteria.splice(crIdx,1);
+        syncJsonFromState_();
+        renderConfigBuilder_();
+      });
+
+      const cn = row.querySelector('[data-field="crName"]');
+      const cid= row.querySelector('[data-field="crId"]');
+      const cw = row.querySelector('[data-field="crWeight"]');
+      cn?.addEventListener("input", ()=>{
+        cr.name = cn.value.trim();
+        if(!cid.value.trim()) { cr.id = normalizeId_(cr.name); cid.value=cr.id; }
+        syncJsonFromState_();
+        markDupIdsUI_();
+        updateCompBadge_(idx); // update badge sum
+      });
+      cid?.addEventListener("input", ()=>{
+        cr.id = normalizeId_(cid.value);
+        cid.value = cr.id;
+        syncJsonFromState_();
+      });
+      cw?.addEventListener("input", ()=>{
+        cr.weight = Number(cw.value||0) || 0;
+        syncJsonFromState_();
+        updateCompBadge_(idx); // update sum display
+      });
+
+      // desc editor
+      row.querySelector('[data-act="editDesc"]')?.addEventListener("click", ()=>{
+        openDescEditor_(c, cr);
+      });
+    });
+  });
+
+  // enable drag-drop reorder + mark dupe IDs
+  bindCompSortable_(host);
+  cfg.competitions.forEach((c,idx)=>{
+    const cKey = c._key;
+    const root = host.querySelector(`[data-comp-idx="${idx}"]`);
+    if(root){
+      bindTableSortable_(root, idx, "team");
+      bindTableSortable_(root, idx, "cr");
+    }
+  });
+  markDupIdsUI_();
+}
+
+
+function competitionCardHtml_(c, idx, isOpen){
+  const sum = weightSum_(c);
+  const sumOk = (Math.round(sum*100)/100) === 100;
+  const sumCls = sumOk ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700";
+  const sumLbl = sumOk ? "Bobot 100 ✅" : ("Total bobot: " + sum + " (harus 100)");
+  const teamsRows = (c.teams||[]).map((t,i)=>`
+    <tr data-row="team" data-tidx="${i}" draggable="true">
+      <td class="p-2 w-8 text-slate-400">
+        <span class="cursor-move select-none" title="Drag untuk urutkan" data-handle="team"><i class="fa-solid fa-grip-vertical"></i></span>
+      </td>
+      <td class="p-2">
+        <input data-field="teamName" value="${esc(t.name||"")}" class="w-full px-2 py-1 rounded-lg border border-slate-200"/>
+      </td>
+      <td class="p-2">
+        <input data-field="teamId" value="${esc(t.id||"")}" class="w-full px-2 py-1 rounded-lg border border-slate-200 font-mono text-xs"/>
+      </td>
+      <td class="p-2 text-right">
+        <button data-act="delTeam" class="px-3 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </td>
+    </tr>
+  `).join("") || `<tr><td colspan="3" class="p-3 text-sm text-slate-500">Belum ada tim.</td></tr>`;
+
+  const crRows = (c.criteria||[]).map((cr,i)=>`
+    <tr data-row="cr" data-cridx="${i}" draggable="true">
+      <td class="p-2 w-8 text-slate-400">
+        <span class="cursor-move select-none" title="Drag untuk urutkan" data-handle="cr"><i class="fa-solid fa-grip-vertical"></i></span>
+      </td>
+      <td class="p-2">
+        <input data-field="crName" value="${esc(cr.name||"")}" class="w-full px-2 py-1 rounded-lg border border-slate-200"/>
+      </td>
+      <td class="p-2">
+        <input data-field="crId" value="${esc(cr.id||"")}" class="w-full px-2 py-1 rounded-lg border border-slate-200 font-mono text-xs"/>
+      </td>
+      <td class="p-2">
+        <input data-field="crWeight" type="number" min="0" max="100" value="${Number(cr.weight||0)}" class="w-full px-2 py-1 rounded-lg border border-slate-200"/>
+      </td>
+      <td class="p-2">
+        <button data-act="editDesc" class="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200">
+          <i class="fa-solid fa-list-check mr-1"></i>Deskripsi
+        </button>
+      </td>
+      <td class="p-2 text-right">
+        <button data-act="delCr" class="px-3 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </td>
+    </tr>
+  `).join("") || `<tr><td colspan="5" class="p-3 text-sm text-slate-500">Belum ada kriteria.</td></tr>`;
+
+  return `
+  <div class="p-4 rounded-2xl border border-slate-200 bg-white" data-comp-idx="${idx}" data-comp-key="${esc(c._key||"")}" draggable="true">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <div class="font-semibold flex items-center gap-2">
+          <span class="text-slate-400 cursor-move select-none" title="Drag untuk urutkan lomba" data-handle="comp"><i class="fa-solid fa-grip-vertical"></i></span>
+          <span data-part="headerName">${esc(c.name||c.id||("Lomba "+(idx+1)))}</span>
+          <span class="badge ${sumCls}">${esc(sumLbl)}</span>
+        </div>
+        <div class="text-xs text-slate-500 mt-1">ID wajib unik. Jika ragu, biarkan sistem yang isi otomatis.</div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button data-act="toggle" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200">
+          <i class="fa-solid ${isOpen ? "fa-chevron-up" : "fa-chevron-down"}"></i>
+        </button>
+        <button data-act="copyComp" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200" title="Duplikasi lomba (copy)">
+          <i class="fa-solid fa-copy"></i>
+        </button>
+        <button data-act="moveCompUp" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200" title="Pindah ke atas">
+          <i class="fa-solid fa-chevron-up"></i>
+        </button>
+        <button data-act="moveCompDown" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200" title="Pindah ke bawah">
+          <i class="fa-solid fa-chevron-down"></i>
+        </button>
+        <button data-act="delComp" class="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>
+    </div>
+
+    <div data-part="body" class="mt-3 ${isOpen ? "" : "hidden"}">
+      <div class="grid md:grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-slate-600 mb-1">Nama Lomba</label>
+          <input data-field="compName" value="${esc(c.name||"")}" class="w-full px-3 py-2 rounded-xl border border-slate-200"/>
+        </div>
+        <div>
+          <label class="block text-xs text-slate-600 mb-1">ID Lomba</label>
+          <input data-field="compId" value="${esc(c.id||"")}" class="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono text-xs"/>
+        </div>
+      </div>
+
+      <div class="mt-4 grid lg:grid-cols-2 gap-3">
+        <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200">
+          <div class="flex items-center justify-between">
+            <div class="font-semibold">Tim</div>
+            <button data-act="addTeam" class="px-3 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800">
+              <i class="fa-solid fa-plus mr-1"></i>Tambah Tim
+            </button>
+            </div>
+          </div>
+          <div class="mt-2 overflow-auto">
+            <table class="min-w-full text-sm">
+              <thead>
+                <tr class="text-left text-xs text-slate-500">
+                  <th class="p-2 w-8"></th>
+                  <th class="p-2">Nama</th>
+                  <th class="p-2">ID</th>
+                  <th class="p-2 text-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody>${teamsRows}</tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200">
+          <div class="flex items-center justify-between">
+            <div class="font-semibold">Kriteria</div>
+            <div class="flex items-center gap-2">
+              <button data-act="auto100" class="px-3 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700" title="Atur bobot kriteria otomatis jadi total 100%">
+                <i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Auto 100%
+              </button>
+              <button data-act="addCr" class="px-3 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800">
+              <i class="fa-solid fa-plus mr-1"></i>Tambah Kriteria
+            </button>
+            </div>
+          </div>
+          <div class="mt-2 overflow-auto">
+            <table class="min-w-full text-sm">
+              <thead>
+                <tr class="text-left text-xs text-slate-500">
+                  <th class="p-2 w-8"></th>
+                  <th class="p-2">Nama</th>
+                  <th class="p-2">ID</th>
+                  <th class="p-2">Bobot %</th>
+                  <th class="p-2">Panduan</th>
+                  <th class="p-2 text-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody>${crRows}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function openDescEditor_(comp, cr){
+  const maxStars = Number(state.config?.max_stars||5) || 5;
+  const desc = cr.desc || (cr.desc = {});
+  const rows = Array.from({length:maxStars}).map((_,i)=>{
+    const n = i+1;
+    const v = desc[n] || "";
+    return `
+      <div class="mb-2">
+        <label class="block text-xs text-slate-600 mb-1">Nilai ${n}</label>
+        <input data-desc="${n}" value="${esc(v)}" class="w-full px-3 py-2 rounded-xl border border-slate-200" placeholder="contoh: ..."/>
+      </div>`;
+  }).join("");
+
+  const modal = document.createElement("div");
+  modal.className = "fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4";
+  modal.innerHTML = `
+    <div class="w-full max-w-xl rounded-2xl bg-white border border-slate-200 shadow-lg">
+      <div class="p-4 border-b border-slate-200 flex items-start justify-between gap-3">
+        <div>
+          <div class="font-semibold">Panduan Penilaian</div>
+          <div class="text-sm text-slate-600">${esc(comp.name)} • ${esc(cr.name)}</div>
+        </div>
+        <button data-act="close" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="p-4 max-h-[65vh] overflow-auto">
+        ${rows}
+      </div>
+      <div class="p-4 border-t border-slate-200 flex flex-col sm:flex-row gap-2">
+        <button data-act="save" class="flex-1 px-4 py-3 rounded-2xl bg-slate-900 text-white hover:bg-slate-800">
+          <i class="fa-solid fa-check mr-2"></i>Simpan Panduan
+        </button>
+        <button data-act="cancel" class="flex-1 px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200">Batal</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  function close(){ modal.remove(); }
+  modal.querySelector('[data-act="close"]').addEventListener("click", close);
+  modal.querySelector('[data-act="cancel"]').addEventListener("click", close);
+  modal.addEventListener("click", (e)=>{ if(e.target===modal) close(); });
+
+  modal.querySelector('[data-act="save"]').addEventListener("click", ()=>{
+    modal.querySelectorAll("input[data-desc]").forEach(inp=>{
+      const n = inp.dataset.desc;
+      desc[n] = inp.value.trim();
+    });
+    cr.desc = desc;
+    syncJsonFromState_();
+    renderConfigBuilder_();
+    toast("Panduan disimpan (belum ke server). Jangan lupa klik Simpan Config.", "ok");
+    close();
+  });
+}
+
+
+async function refreshAdjustments(){
+  if(!state.session?.token) return;
+  try{
+    const res = await apiJsonp("adjustments.list");
+    state.adjustments = res.rows || [];
+  }catch(_){
+    state.adjustments = [];
+  }
+}
+
+async function saveAdjustment(){
+  if(state.session?.profile?.role!=="admin"){ toast("Adjustment hanya via admin (kesepakatan juri)", "warn"); return; }
+  const compId = $("#adjCompetition").value;
+  const teamId = $("#adjTeam").value;
+  const val = Number($("#adjValue").value||0) || 0;
+  const note = $("#adjNote").value.trim();
+  if(!compId || !teamId){ toast("Pilih lomba dan tim", "warn"); return; }
+
+  try{
+    await apiJsonp("adjustments.save", {}, { adjustment:{
+      event_id: state.config?.event_id || "FG",
+      competition_id: compId,
+      team_id: teamId,
+      value: val,
+      note
+    }});
+    $("#adjValue").value = "";
+    $("#adjNote").value = "";
+    await refreshAdjustments();
+    renderResults();
+    toast("Adjustment tersimpan", "ok");
+  }catch(err){
+    toast("Gagal simpan adjustment: " + err.message, "err");
+  }
+}
+
+async function adminLoadRatings(){
+  if(state.session?.profile?.role!=="admin") return;
+  try{
+    const res = await apiJsonp("admin.listRatings");
+    const rows = res.rows || [];
+    const body = $("#adminRatingsBody");
+    body.innerHTML = "";
+    rows.slice(-500).reverse().forEach(r=>{
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="py-2 pr-3 whitespace-nowrap">${esc(String(r["date"]||"").slice(0,10))}</td>
+        <td class="py-2 pr-3">${esc(r["judge_name"]||r["judge_nik"]||"")}</td>
+        <td class="py-2 pr-3">${esc(r["competition_name"]||r["competition_id"]||"")}</td>
+        <td class="py-2 pr-3 font-semibold">${esc(r["team_name"]||r["team_id"]||"")}</td>
+        <td class="py-2 pr-3">${esc(r["criterion_name"]||r["criterion_id"]||"")}</td>
+        <td class="py-2 pr-3 text-right">${Number(r["weight"]||0).toFixed(0)}%</td>
+        <td class="py-2 pr-3 text-right">${Number(r["rating"]||0)}</td>
+        <td class="py-2 pr-3">${esc(r["comment"]||"")}</td>
+      `;
+      body.appendChild(tr);
+    });
+  }catch(err){
+    toast("Gagal load penilaian server: " + err.message, "err");
+  }
+}
+
+// ===== Tabs =====
+function setTab(name){
+  $$(".tabbtn").forEach(b=> b.setAttribute("aria-selected", b.dataset.tab===name ? "true":"false"));
+  $$(".tabpane").forEach(p=> p.classList.toggle("hidden", p.id !== "tab-"+name));
+
+  if(name==="results") renderResults();
+  if(name==="failed") renderFailed();
+  if(name==="admin") adminLoadRatings();
+}
+
+// ===== Online indicator =====
+function updateOnline(){
+  const online = navigator.onLine;
+  const el = $("#statusOnline");
+  el.innerHTML = online
+    ? `<i class="fa-solid fa-wifi"></i> Online`
+    : `<i class="fa-solid fa-signal"></i> Offline`;
+  el.className = online
+    ? "badge bg-emerald-100 text-emerald-700"
+    : "badge bg-slate-100 text-slate-700";
+}
+
+// ===== Render all =====
+function renderAll(){
+  refreshCounters();
+  renderResults();
+  renderFailed();
+}
+
+// ===== Reset Local =====
+function resetLocal(){
+  if(!confirm("Reset local akan menghapus data di perangkat (ratings/outbox/failed). Lanjut?")) return;
+  localStorage.removeItem(LS.ratings);
+  localStorage.removeItem(LS.outbox);
+  localStorage.removeItem(LS.failed);
+  state.ratings = [];
+  state.outbox = [];
+  state.failed = [];
+  saveLS();
+  refreshCounters();
+  renderAll();
+  toast("Local reset selesai", "ok");
+}
+
+// ===== Boot =====
+(function init(){
+  loadLS();
+
+  // set default date today
+  const today = new Date().toISOString().slice(0,10);
+  $("#eventDate").value = today;
+
+  applyBranding();
+  refreshSessionUI();
+  buildSelectors();
+  updateOnline();
+  refreshCounters();
+  renderAll();
+
+  // load server config ASAP
+  refreshConfig().then(()=> refreshAdjustments().then(()=>renderResults()));
+
+  // events
+  window.addEventListener("online", ()=>{ updateOnline(); });
+  window.addEventListener("offline", ()=>{ updateOnline(); });
+
+  // tabs
+  $$(".tabbtn").forEach(btn=>{
+    btn.addEventListener("click", ()=> setTab(btn.dataset.tab));
+  });
+
+  $("#competitionType").addEventListener("change", updateTeams);
+  $("#teamSelect").addEventListener("change", renderCriteria);
+  $("#btnResetForm").addEventListener("click", ()=>withBtnBusy($("#btnResetForm"), "Mereset…", async()=>{ resetForm(); }));
+  $("#btnSaveRating").addEventListener("click", ()=>withBtnBusy($("#btnSaveRating"), "Menyimpan…", async()=>{ saveRating(); }));
+  $("#btnSyncNow").addEventListener("click", ()=>withBtnBusy($("#btnSyncNow"), "Sync…", syncNow));
+  $("#btnExport").addEventListener("click", ()=>withBtnBusy($("#btnExport"), "Mengekspor…", async()=>{ exportXlsx(); }));
+  $("#btnResetLocal").addEventListener("click", ()=>withBtnBusy($("#btnResetLocal"), "Mereset…", async()=>{ resetLocal(); }));
+
+  // results filters
+  $("#filterCompetition").addEventListener("change", renderResults);
+  $("#filterJudge").addEventListener("change", renderResults);
+  $("#filterMode").addEventListener("change", renderResults);
+
+  // login modal
+  $("#btnUser").addEventListener("click", ()=>{
+    if(state.session?.token){
+      if(confirm("Logout?")){
+        state.session=null;
+        saveLS();
+        refreshSessionUI();
+        toast("Logout", "ok");
+      }
+    }else{
+      openLogin();
+    }
+  });
+  $("#btnCloseLogin").addEventListener("click", closeLogin);
+  $("#btnDoLogin").addEventListener("click", doLogin);
+
+  // failed
+  $("#btnRetryAll").addEventListener("click", retryAll);
+
+  // admin
+  $("#btnSaveConfig").addEventListener("click", saveConfigFromAdmin);
+  $("#btnReloadConfig").addEventListener("click", reloadConfigAdmin);
+  // live update basic fields into state (builder) so JSON stays in sync
+  $("#cfgTitle").addEventListener("input", ()=>{
+    state.config = ensureConfigShape_(state.config || {});
+    state.config.title = $("#cfgTitle").value.trim();
+    syncJsonFromState_();
+  });
+  $("#cfgEventId").addEventListener("input", ()=>{
+    state.config = ensureConfigShape_(state.config || {});
+    state.config.event_id = $("#cfgEventId").value.trim();
+    syncJsonFromState_();
+  });
+  $("#cfgMaxStars").addEventListener("change", ()=>{
+    state.config = ensureConfigShape_(state.config || {});
+    state.config.max_stars = Number($("#cfgMaxStars").value||5) || 5;
+    syncJsonFromState_();
+    renderConfigBuilder_(); // supaya editor deskripsi mengikuti max stars
+  });
+  $("#btnBeautifyJson").addEventListener("click", beautifyJson);
+  $("#btnApplyJsonToForm").addEventListener("click", applyJsonToForm);
+  // config builder
+  const btnAdd = $("#btnAddCompetition");
+  if(btnAdd) btnAdd.addEventListener("click", ()=>{
+    state.config = ensureConfigShape_(state.config || {});
+    state.config.competitions.push({ _key: uid(), id: normalizeId_("LOMBA"), name:"Lomba Baru", teams:[], criteria:[] });
+    // auto-open card yang baru dibuat
+    const last = state.config.competitions[state.config.competitions.length-1];
+    if(last?._key){ state.ui.openCompIds[last._key] = true; }
+    syncJsonFromState_();
+    renderConfigBuilder_();
+  });
+
+  const btnAdv = $("#btnToggleAdvanced");
+  if(btnAdv) btnAdv.addEventListener("click", ()=>{
+    const box = $("#cfgAdvancedBox");
+    if(!box) return;
+    box.classList.toggle("hidden");
+    if(!box.classList.contains("hidden")) syncJsonFromState_();
+  });
+  $("#adjCompetition").addEventListener("change", updateAdminAdjTeams);
+  $("#btnSaveAdjustment").addEventListener("click", saveAdjustment);
+  $("#btnPreviewAdminCalc").addEventListener("click", async ()=>{
+    await refreshAdjustments();
+    renderResults();
+    toast("Rekap diperbarui (local + adjustment)", "ok");
+  });
+
+})();
+
+</script>
+
+</body>
+</html>

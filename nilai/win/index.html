@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FG - Pengumuman Juara</title>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: { fontFamily: { sans: ['Poppins','ui-sans-serif','system-ui'] } } }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Ctext y='54' x='6' font-size='56'%3E%F0%9F%8F%86%3C/text%3E%3C/svg%3E" />
+
+  <!-- Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+
+  <style>
+    /* subtle animated background */
+    .bg-anim {
+      background: radial-gradient(1200px 600px at 10% 10%, rgba(59,130,246,.28), transparent 60%),
+                  radial-gradient(900px 500px at 90% 20%, rgba(16,185,129,.20), transparent 55%),
+                  radial-gradient(1100px 650px at 50% 100%, rgba(244,63,94,.18), transparent 60%),
+                  linear-gradient(180deg, #0b1220 0%, #050711 100%);
+      position: relative;
+      overflow: hidden;
+    }
+    .glow {
+      box-shadow: 0 0 0 1px rgba(255,255,255,.06), 0 20px 60px rgba(0,0,0,.55);
+    }
+    .shine {
+      position: relative;
+      overflow: hidden;
+    }
+    .shine:before {
+      content:"";
+      position:absolute; inset:-40% -60%;
+      background: linear-gradient(120deg, transparent 40%, rgba(255,255,255,.18) 50%, transparent 60%);
+      transform: translateX(-60%) rotate(8deg);
+      animation: shine 6.5s linear infinite;
+    }
+    @keyframes shine { 0%{transform:translateX(-60%) rotate(8deg)} 100%{transform:translateX(60%) rotate(8deg)} }
+    .pop { animation: pop .55s cubic-bezier(.2,.9,.2,1) both; }
+    @keyframes pop { from{transform:translateY(16px) scale(.98); opacity:0} to{transform:translateY(0) scale(1); opacity:1} }
+    .pulseRing { animation: ring 1.8s ease-in-out infinite; }
+    @keyframes ring { 0%,100%{transform:scale(1); opacity:.65} 50%{transform:scale(1.04); opacity:1} }
+  </style>
+</head>
+
+<body class="min-h-screen bg-anim text-white font-sans">
+  <!-- Audio (unlock setelah klik tombol) -->
+  <audio id="winAudio" src="assets/win.mp3" preload="auto"></audio>
+  <!-- Audio tambahan sesuai request -->
+  <audio id="shuffleAudio" src="assets/relaxing-guitar-loop-v5-245859.mp3" preload="auto" loop></audio>
+  <audio id="clapAudio" src="assets/clapping-slight-echo-102675.mp3" preload="auto"></audio>
+
+  <!-- Confetti canvas (lebih stabil di semua browser) -->
+  <canvas id="confettiCanvas" class="fixed inset-0 w-full h-full pointer-events-none" style="z-index:9999"></canvas>
+
+  <div class="max-w-7xl mx-auto px-4 md:px-6 py-6">
+    <!-- Top bar -->
+    <div class="flex items-center gap-3">
+      <div class="flex-1">
+        <div class="text-xs tracking-widest text-white/60 uppercase">Family Gathering</div>
+        <h1 id="appTitle" class="text-2xl md:text-3xl font-extrabold leading-tight">
+          Pengumuman Pemenang
+        </h1>
+        <div id="appSub" class="text-sm text-white/60 mt-1">Ambil data dari aplikasi penilaian (local / server) lalu tampilkan juara dengan efek dramatis.</div>
+      </div>
+
+      <button id="btnFs" class="hidden md:inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10">
+        <span class="text-sm font-semibold">Fullscreen</span>
+      </button>
+    </div>
+
+    <!-- Control panel -->
+    <div class="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div class="lg:col-span-1 p-4 md:p-5 rounded-3xl bg-white/6 border border-white/10 glow">
+        <div class="flex items-center justify-between gap-2">
+          <div class="font-bold">Kontrol</div>
+          <span id="srcBadge" class="text-xs px-2 py-1 rounded-full bg-white/10 border border-white/10">Sumber: -</span>
+        </div>
+
+        <div class="mt-4 space-y-3">
+          <label class="block">
+            <span class="text-xs text-white/60">Kategori / Lomba</span>
+            <select id="selComp" class="mt-1 w-full rounded-2xl bg-white/10 border border-white/10 px-3 py-3 outline-none focus:ring-2 focus:ring-white/20">
+              <option value="">Memuat...</option>
+            </select>
+          </label>
+
+          <div class="grid grid-cols-2 gap-3">
+            <label class="block">
+              <span class="text-xs text-white/60">Mode</span>
+              <select id="selMode" class="mt-1 w-full rounded-2xl bg-white/10 border border-white/10 px-3 py-3 outline-none focus:ring-2 focus:ring-white/20">
+                <option value="sum">Jumlah (Sum)</option>
+                <option value="avg">Rata-rata (Avg)</option>
+              </select>
+            </label>
+            <label class="block">
+              <span class="text-xs text-white/60">Top</span>
+              <select id="selTop" class="mt-1 w-full rounded-2xl bg-white/10 border border-white/10 px-3 py-3 outline-none focus:ring-2 focus:ring-white/20">
+                <option value="3">Top 3</option>
+                <option value="5">Top 5</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="grid grid-cols-1 gap-3">
+            <button id="btnReload" class="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 font-semibold">
+              <span class="btn-label">Refresh Data</span><span class="btn-spin hidden ml-2 inline-flex items-center"><svg class="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"></path></svg></span>
+            </button>
+          </div>
+
+          <div class="pt-2 border-t border-white/10">
+            <div class="text-xs text-white/60 mb-2">Mode Pengumuman</div>
+            <div class="grid grid-cols-2 gap-3">
+              <button id="btnStart" class="px-4 py-3 rounded-2xl bg-emerald-500/90 hover:bg-emerald-500 text-emerald-950 font-extrabold">
+                <span class="btn-label">Mulai</span><span class="btn-spin hidden ml-2 inline-flex items-center"><svg class="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"></path></svg></span>
+              </button>
+              <button id="btnReset" class="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 font-semibold">
+                Reset
+              </button>
+            </div>
+            <button id="btnNext" class="mt-3 w-full px-4 py-4 rounded-2xl bg-amber-300 hover:bg-amber-200 text-amber-950 font-extrabold disabled:opacity-40 disabled:cursor-not-allowed">
+              <span class="btn-label">Tampilkan Berikutnya</span><span class="btn-spin hidden ml-2 inline-flex items-center"><svg class="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"></path></svg></span>
+            </button>
+          </div>
+
+          <div class="text-xs text-white/55 leading-relaxed">
+            
+          </div>
+        </div>
+      </div>
+
+      <!-- Stage -->
+      <div class="lg:col-span-2 p-4 md:p-6 rounded-3xl bg-white/6 border border-white/10 glow min-h-[520px] flex flex-col">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center">
+              🏆
+            </div>
+            <div>
+              <div id="stageTitle" class="font-extrabold text-lg md:text-xl">Siap Pengumuman</div>
+              <div id="stageHint" class="text-sm text-white/60">Pilih kategori, tekan <b>Mulai</b>, lalu klik <b>Tampilkan Berikutnya</b>.</div>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-xs text-white/55">Terakhir refresh</div>
+            <div id="lastRefresh" class="text-sm font-semibold">-</div>
+          </div>
+        </div>
+
+        <div id="stage" class="flex-1 mt-6 grid place-items-center">
+          <!-- content injected -->
+          <div class="text-center">
+            <div class="text-5xl md:text-6xl font-extrabold tracking-tight">🎭</div>
+            <div class="mt-3 text-xl md:text-2xl font-extrabold">Pengumuman Pemenang</div>
+            <div class="mt-2 text-white/60">Akan tampil dramatis: Juara N → ... → 1 (sesuai Top)</div>
+          </div>
+        </div>
+
+        <div class="mt-6 border-t border-white/10 pt-4">
+          <div id="smallRanking" class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <!-- preview cards -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* =========================================================
+   FG2026 - Pengumuman Juara (Tailwind)
+   - Data source: localStorage (fg_eval_v5_ratings, fg_eval_v5_config_cache)
+   - Optional: fetch server via GAS JSONP (admin.listRatings) jika ada token
+   - Ranking formula meniru aplikasi penilaian:
+     total += rating * (weight/100), lalu dijumlah per juri (sum) / dirata (avg)
+   ========================================================= */
+
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwb7d3idsn4GFxK5pYbuaZa8WZ4DdfiE4yzBGOWLc37RZaG0pi9sbr81EYD6mLcQ6rf/exec";
+
+const LS = {
+  session: "fg_eval_v5_session",
+  config: "fg_eval_v5_config_cache",
+  ratings: "fg_eval_v5_ratings"
+};
+
+const $ = (q,el=document)=>el.querySelector(q);
+const esc = (s)=>String(s??"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+
+function setBtnLoading(btn, loading, busyText){
+  if(!btn) return;
+  const lab = btn.querySelector('.btn-label');
+  const spin = btn.querySelector('.btn-spin');
+  if(loading){
+    btn.disabled = true;
+    btn.dataset._oldLabel = lab ? lab.textContent : (btn.textContent || '');
+    if(lab && busyText) lab.textContent = busyText;
+    if(spin) spin.classList.remove('hidden');
+  }else{
+    btn.disabled = false;
+    if(lab && btn.dataset._oldLabel) lab.textContent = btn.dataset._oldLabel;
+    if(spin) spin.classList.add('hidden');
+  }
+}
+function nowLabel(){
+  const d = new Date();
+  const pad = (n)=>String(n).padStart(2,'0');
+  return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function readJSON(key, fallback){
+  try{
+    const s = localStorage.getItem(key);
+    if(!s) return fallback;
+    return JSON.parse(s);
+  }catch(e){ return fallback; }
+}
+
+function writeJSON(key, val){
+  try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){}
+}
+
+/* ===== JSONP helper (mirip scoring app) ===== */
+function apiJsonp(action, params={}, payload=null){
+  return new Promise((resolve,reject)=>{
+    const cb = "FGCB_"+Math.random().toString(16).slice(2);
+    const q = new URLSearchParams();
+    q.set("action", action);
+    for(const k in params){ if(params[k]!==undefined && params[k]!==null) q.set(k, params[k]); }
+    if(payload!==null){
+      q.set("payload", encodeURIComponent(JSON.stringify(payload)));
+    }
+    q.set("callback", cb);
+    const src = GAS_URL + "?" + q.toString();
+
+    const timer = setTimeout(()=>{
+      cleanup();
+      reject(new Error("Timeout JSONP"));
+    }, 20000);
+
+    function cleanup(){
+      clearTimeout(timer);
+      try{ delete window[cb]; }catch(e){}
+      if(script && script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    window[cb] = (data)=>{
+      cleanup();
+      resolve(data);
+    };
+
+    const script = document.createElement("script");
+    script.src = src;
+    script.onerror = ()=>{
+      cleanup();
+      reject(new Error("JSONP error"));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+/* ===== Load config & ratings ===== */
+const state = {
+  config: null,
+  ratings: [],
+  source: "local",
+  ranking: [],
+  ceremony: { started:false, step:0, podium:[] }
+};
+
+function getToken(){
+  const ses = readJSON(LS.session, null);
+  return ses?.token || "";
+}
+
+async function loadConfig(){
+  // 1) cache localStorage
+  const cached = readJSON(LS.config, null);
+  if(cached && cached.config){ state.config = cached.config; }
+  // 2) fetch server (tidak butuh token)
+  try{
+    const res = await apiJsonp("public.getConfig");
+    if(res && res.ok && res.config){
+      state.config = res.config;
+      writeJSON(LS.config, { config: res.config, updated_at: res.updated_at||"", updated_by: res.updated_by||"" });
+    }
+  }catch(e){
+    // ignore (offline)
+  }
+
+  // Apply to UI
+  const title = state.config?.title || "Pengumuman Pemenang";
+  $("#appTitle").textContent = title;
+  document.title = title + " - Juara";
+  $("#appSub").textContent = (state.config?.event_id ? `Event: ${state.config.event_id}` : "Ambil data dari aplikasi penilaian, lalu tampilkan juara.");
+}
+
+async function loadRatings(){
+  // Prefer server jika ada token & online
+  const token = getToken();
+  if(token){
+    try{
+      const res = await apiJsonp("admin.listRatings", { token });
+      if(res && res.ok && Array.isArray(res.rows)){
+        state.ratings = res.rows.map(normalizeRating);
+        state.source = "server";
+        $("#srcBadge").textContent = "Sumber: Server";
+        return;
+      }
+    }catch(e){}
+  }
+  // fallback local
+  const local = readJSON(LS.ratings, []);
+  state.ratings = Array.isArray(local) ? local.map(normalizeRating) : [];
+  state.source = "local";
+  $("#srcBadge").textContent = "Sumber: Lokal";
+}
+
+function normalizeRating(r){
+  // GAS rows bisa berupa number/date; paksa string field yang penting
+  const o = {
+    event_id: r.event_id ?? "",
+    date: r.date ?? "",
+    judge_nik: String(r.judge_nik ?? "").trim(),
+    judge_name: r.judge_name ?? "",
+    competition_id: String(r.competition_id ?? "").trim(),
+    competition_name: r.competition_name ?? "",
+    category: r.category ?? "",
+    team_id: String(r.team_id ?? "").trim(),
+    team_name: r.team_name ?? "",
+    criterion_id: String(r.criterion_id ?? "").trim(),
+    criterion_name: r.criterion_name ?? "",
+    weight: (r.weight ?? 0),
+    rating: (r.rating ?? 0),
+    comment: r.comment ?? ""
+  };
+  // normalize numbers
+  o.weight = Number(o.weight || 0);
+  o.rating = Number(o.rating || 0);
+  return o;
+}
+
+/* ===== Ranking compute (meniru computeResults di app penilaian) ===== */
+function computeRanking({competitionId, mode="sum"}){
+  const ratings = state.ratings.filter(r => r.competition_id === competitionId);
+  // group by team then judge
+  const group = new Map(); // key team -> { team..., byJudge: {nik:[rows]} }
+  for(const r of ratings){
+    const k = r.team_id || r.team_name || "UNKNOWN";
+    if(!group.has(k)){
+      group.set(k, {
+        competition_id: competitionId,
+        competition_name: r.competition_name || (getCompetitionName(competitionId) || competitionId),
+        team_id: r.team_id || k,
+        team_name: r.team_name || r.team_id || k,
+        byJudge: {}
+      });
+    }
+    const g = group.get(k);
+    const j = r.judge_nik || "UNKNOWN";
+    (g.byJudge[j] = g.byJudge[j] || []).push(r);
+  }
+
+  const rows = Array.from(group.values()).map(g=>{
+    const judgeKeys = Object.keys(g.byJudge);
+    const perJudgeScores = judgeKeys.map(j=>{
+      const arr = g.byJudge[j];
+      let total = 0;
+      for(const r of arr){
+        total += (Number(r.rating||0) * (Number(r.weight||0)/100));
+      }
+      return total;
+    });
+
+    let score = 0;
+    if(mode==="avg"){
+      score = perJudgeScores.length ? perJudgeScores.reduce((a,b)=>a+b,0)/perJudgeScores.length : 0;
+    }else{
+      score = perJudgeScores.reduce((a,b)=>a+b,0);
+    }
+    score = score * 10;
+
+    return {
+      competition_id: g.competition_id,
+      competition_name: g.competition_name,
+      team_id: g.team_id,
+      team_name: g.team_name,
+      score,
+      judgeCount: judgeKeys.length
+    };
+  });
+
+  rows.sort((a,b)=>b.score-a.score);
+  rows.forEach((r,i)=> r.rank = i+1);
+  return rows;
+}
+
+function getCompetitionName(id){
+  const comps = state.config?.competitions || [];
+  const c = comps.find(x=>String(x.id)===String(id));
+  return c?.name || "";
+}
+
+/* ===== UI render ===== */
+function fillCompetitionSelect(){
+  const sel = $("#selComp");
+  const comps = state.config?.competitions || [];
+  const options = comps.map(c=>`<option value="${esc(c.id)}">${esc(c.name || c.id)}</option>`);
+  sel.innerHTML = options.length ? options.join("") : '<option value="">(Tidak ada kategori)</option>';
+}
+
+function renderPreview(){
+  // ❗ Tidak menampilkan ranking penuh untuk mencegah pemenang "bocor".
+  // Panel bawah hanya menampilkan pemenang yang SUDAH direveal.
+  renderWinnersPreview();
+}
+
+function renderWinnersPreview(){
+  const podium = state.ceremony.podium || [];
+  const revealed = Math.max(0, Number(state.ceremony.revealed||0));
+
+  if(!state.ceremony.started){
+    $("#smallRanking").innerHTML = `
+      <div class="md:col-span-3 p-4 rounded-2xl bg-white/8 border border-white/10 text-center">
+        <div class="text-sm font-semibold">Preview Daftar Pemenang</div>
+        <div class="text-xs text-white/60 mt-1"></div>
+      </div>
+    `;
+    return;
+  }
+
+  const topN = (state.ceremony.podium||[]).length || 3;
+
+  const medals = Array.from({length: topN}, (_,i)=>{
+    const juara = topN - i;
+    const emoji = (juara===1) ? "🥇" : (juara===2) ? "🥈" : (juara===3) ? "🥉" : "⭐";
+    return { label:`JUARA ${juara}`, emoji };
+  });
+
+  const slot = (i)=>{
+    const m = medals[i];
+    const shown = revealed >= (i+1);
+    const p = podium[i];
+    if(!shown || !p){
+      return `
+        <div class="p-4 rounded-2xl bg-white/5 border border-white/10">
+          <div class="text-xs text-white/60">${m.emoji} ${m.label}</div>
+          <div class="mt-2 text-lg font-extrabold tracking-tight">Terkunci</div>
+          <div class="mt-1 text-xs text-white/55"></div>
+        </div>
+      `;
+    }
+    return `
+      <div class="p-4 rounded-2xl bg-white/8 border border-white/10 shine">
+        <div class="text-xs text-white/60">${m.emoji} ${m.label} • Skor</div>
+        <div class="mt-1 text-lg font-extrabold">${esc(p.team_name)}</div>
+        <div class="mt-1 text-sm text-white/70">${esc(p.team_id)}</div>
+        <div class="mt-3 flex items-end justify-between">
+          <div class="text-3xl font-extrabold">${Number(p.score||0).toFixed(2)}</div>
+          
+        </div>
+      </div>
+    `;
+  };
+
+  $("#smallRanking").innerHTML = [0,1,2].map(slot).join('');
+}
+
+/* ===== Ceremony flow ===== */
+function setStage(title, hint){
+  $("#stageTitle").textContent = title;
+  $("#stageHint").innerHTML = hint;
+}
+
+function renderStageIdle(){
+  $("#stage").innerHTML = `
+    <div class="text-center pop">
+      <div class="text-6xl md:text-7xl font-extrabold tracking-tight">🎬</div>
+      <div class="mt-4 text-2xl md:text-3xl font-extrabold">Siap Mengumumkan</div>
+      <div class="mt-2 text-white/65">Klik <b>Mulai</b> untuk mengunci ranking.</div>
+    </div>
+  `;
+}
+
+function renderStageReveal(podiumIndex, juara){
+  // podiumIndex: 0 -> 3rd, 1 -> 2nd, 2 -> 1st
+  const p = state.ceremony.podium[podiumIndex];
+  if(!p){
+    $("#stage").innerHTML = `<div class="text-center text-white/70">Data juara tidak tersedia.</div>`;
+    return;
+  }
+
+  const topN = (state.ceremony.podium||[]).length || 3;
+
+  const medals = Array.from({length: topN}, (_,i)=>{
+    const juara = topN - i;
+    const emoji = (juara===1) ? "🥇" : (juara===2) ? "🥈" : (juara===3) ? "🥉" : "⭐";
+    return { label:`JUARA ${juara}`, emoji };
+  });
+  const m = medals[podiumIndex];
+
+  const big = podiumIndex===2;
+  const score = Number(p.score||0).toFixed(2);
+
+  $("#stage").innerHTML = `
+    <div class="w-full max-w-3xl text-center pop">
+      <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full border ${m.ring} ${big?'pulseRing':''}">
+        <span class="text-xl">${m.emoji}</span>
+        <span class="font-extrabold tracking-widest">${m.label}</span>
+      </div>
+
+      <div class="mt-6 text-4xl md:text-6xl font-extrabold ${m.text}">
+        ${esc(p.team_name)}
+      </div>
+      <div class="mt-2 text-lg md:text-xl text-white/70">
+        ${esc(p.team_id)}
+      </div>
+
+      <div class="mt-8 flex items-center justify-center gap-3">
+        <div class="px-5 py-3 rounded-2xl bg-white/10 border border-white/10">
+          <div class="text-xs text-white/60">Skor</div>
+          <div class="text-3xl font-extrabold">${score}</div>
+        </div>
+</div>
+    </div>
+  `;
+
+  // Effects
+  // Confetti selalu ada tiap reveal (lebih besar untuk Juara 1)
+  fireConfetti(juara===1 ? "grand" : "normal");
+
+  // Sound: selain Juara 1 = tepuk tangan, Juara 1 = win
+  if(juara===1){
+    playWinSound();
+  }else{
+    playClapSound();
+  }
+
+  // Update preview otomatis (aman, tidak bocor sebelum reveal)
+  state.ceremony.revealed = Math.max(state.ceremony.revealed||0, podiumIndex+1);
+  renderWinnersPreview();
+}
+
+function fireConfetti(mode='normal'){
+  // Lebih stabil: pakai canvas overlay sendiri (tidak "hilang" di beberapa browser)
+  try{
+    const canvas = document.getElementById('confettiCanvas');
+    if(!canvas) return;
+    const c = confetti.create(canvas, { resize: true, useWorker: true });
+
+    const duration = mode==='grand' ? 5200 : 3200;
+    const end = Date.now() + duration;
+    const baseCount = mode==='grand' ? 10 : 6;
+    const spread = mode==='grand' ? 90 : 70;
+    const vel = mode==='grand' ? 45 : 36;
+
+    (function frame(){
+      c({
+        particleCount: baseCount,
+        spread,
+        startVelocity: vel,
+        origin: { x: Math.random(), y: Math.random() * 0.30 + 0.05 }
+      });
+      if(Date.now() < end) requestAnimationFrame(frame);
+    })();
+  }catch(e){}
+}
+
+async function playFor(audioEl, ms){
+  if(!audioEl) return;
+  try{
+    audioEl.currentTime = 0;
+    await audioEl.play();
+  }catch(e){
+    // Autoplay blocked: biasanya sudah ter-unlock karena user klik tombol.
+  }
+  setTimeout(()=>{
+    try{ audioEl.pause(); audioEl.currentTime = 0; }catch(e){}
+  }, ms);
+}
+
+async function playWinSound(){
+  const a = $("#winAudio");
+  if(!a) return;
+  try{
+    a.currentTime = 0;
+    await a.play();
+  }catch(e){
+    // Autoplay blocked: user must click once (Mulai / Berikutnya) — sudah dilakukan, tapi jaga-jaga.
+  }
+}
+
+function playClapSound(){
+  const a = $("#clapAudio");
+  return playFor(a, 7000);
+}
+
+function playShuffleSound(){
+  const a = $("#shuffleAudio");
+  return playFor(a, 5000);
+}
+
+function renderStageShuffle(label){
+  $("#stage").innerHTML = `
+    <div class="text-center pop">
+      <div class="inline-flex items-center gap-3 px-5 py-3 rounded-2xl bg-white/8 border border-white/10">
+        <svg class="animate-spin" width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path opacity="0.25" d="M12 3a9 9 0 1 0 9 9" stroke="white" stroke-width="3" stroke-linecap="round"/>
+          <path d="M21 12a9 9 0 0 0-9-9" stroke="white" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+        <div class="text-lg md:text-xl font-extrabold">${esc(label)}</div>
+      </div>
+      <div class="mt-3 text-sm text-white/65">Segera menampilkan pemenang dalam <b>5 detik</b>...</div>
+    </div>
+  `;
+}
+
+function startCeremony(){
+  const btn = $("#btnStart");
+  setBtnLoading(btn, true, "Menyiapkan...");
+  const compId = $("#selComp").value;
+  const mode = $("#selMode").value;
+  if(!compId){
+    alert("Pilih kategori/lomba dulu.");
+    return;
+  }
+  const rows = computeRanking({competitionId: compId, mode});
+  if(!rows.length){
+    alert("Belum ada data penilaian untuk kategori ini.");
+    return;
+  }
+  // podium = top N (rank 1..N) but reveal from N -> 1
+  const topN = Math.max(1, Number($("#selTop").value||3));
+  const podium = rows.slice(0, topN).map(r=>({ ...r })).reverse(); // reverse => index0=Juara N, terakhir=Juara 1
+  state.ceremony.started = true;
+  state.ceremony.step = 0;
+  state.ceremony.podium = podium;
+  state.ceremony.revealed = 0;
+
+  const compName = getCompetitionName(compId) || rows[0].competition_name || compId;
+  setStage("Mode Pengumuman", `Kategori: <b>${esc(compName)}</b> • Urutan: <b>Juara ${podium.length}</b> → ... → <b>Juara 1</b>`);
+  $("#btnNext").disabled = false;
+
+  // show “ready to reveal juara N”
+  renderStageIdle();
+  renderPreview();
+  setBtnLoading(btn, false);
+}
+
+async function nextStep(){
+  if(!state.ceremony.started) return;
+  const btnNext = $("#btnNext");
+  setBtnLoading(btnNext, true, "Menampilkan...");
+  const step = state.ceremony.step; // 0->revealN ... ->reveal1
+  const topN = (state.ceremony.podium||[]).length || 3;
+  if(step < topN){
+    const juara = topN - step; // step 0 => Juara N
+    const podiumIndex = step; // podium sudah reverse: index0=Juara N
+    // phase: shuffle 5 detik + sound guitar
+    renderStageShuffle(`Menampilkan Juara ${juara}`);
+    playShuffleSound();
+    await new Promise(r=>setTimeout(r, 5000));
+
+    // phase: reveal
+    if(juara===1){
+      setStage("Pengumuman Juara 1", "Selamat untuk juara 1! 🏆");
+    }else{
+      setStage(`Pengumuman Juara ${juara}`, `Selamat untuk juara ${juara}! ✨`);
+    }
+    renderStageReveal(podiumIndex, juara);
+
+    // update preview: otomatis tampil & bertambah sampai juara 1
+    state.ceremony.revealed = Math.min(topN, step + 1);
+    renderPreview();
+
+  }else{
+    setStage("Selesai", "Pengumuman selesai. Klik <b>Reset</b> untuk mengulang.");
+    $("#btnNext").disabled = true;
+  }
+  state.ceremony.step++;
+  setBtnLoading(btnNext, false);
+}
+
+function resetCeremony(){
+  state.ceremony.started = false;
+  state.ceremony.step = 0;
+  state.ceremony.podium = [];
+  state.ceremony.revealed = 0;
+  $("#btnNext").disabled = true;
+  setStage("Siap Pengumuman", 'Pilih kategori, tekan <b>Mulai</b>, lalu klik <b>Tampilkan Berikutnya</b>.');
+  renderStageIdle();
+  renderPreview();
+}
+
+/* ===== Fullscreen ===== */
+function toggleFullscreen(){
+  const el = document.documentElement;
+  if(!document.fullscreenElement){
+    el.requestFullscreen?.();
+  }else{
+    document.exitFullscreen?.();
+  }
+}
+
+/* ===== Boot ===== */
+async function boot(){
+  $("#btnNext").disabled = true;
+  $("#lastRefresh").textContent = "-";
+
+  // events
+  $("#btnReload").addEventListener("click", async ()=>{
+    await refreshAll();
+    renderPreview();
+  });
+  $("#selComp").addEventListener("change", ()=>{ renderPreview(); resetCeremony(); });
+  $("#selMode").addEventListener("change", ()=>{ renderPreview(); resetCeremony(); });
+  $("#btnStart").addEventListener("click", ()=>{
+    startCeremony();
+  });
+  $("#btnNext").addEventListener("click", ()=>{
+    nextStep();
+  });
+  $("#btnReset").addEventListener("click", ()=>{
+    resetCeremony();
+  });
+  $("#btnFs").addEventListener("click", toggleFullscreen);
+
+  // show fullscreen on capable devices
+  $("#btnFs").classList.remove("hidden");
+
+  await refreshAll();
+  fillCompetitionSelect();
+  renderPreview();
+  renderStageIdle();
+}
+
+async function refreshAll(){
+  const btn = $("#btnReload");
+  setBtnLoading(btn, true, "Memuat...");
+  try{
+    await loadConfig();
+    await loadRatings();
+    $("#lastRefresh").textContent = nowLabel();
+    fillCompetitionSelect();
+  }finally{
+    setBtnLoading(btn, false);
+  }
+}
+
+boot();
+</script>
+</body>
+</html>
