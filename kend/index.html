@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Kendaraan - Unit Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="kend.css">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Ctext y='54' x='6' font-size='56'%3E🚐%3C/text%3E%3C/svg%3E" />
+    <script>
+      tailwind.config = { darkMode: "class" };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900 dark:from-slate-950 dark:via-slate-900 dark:to-slate-800 dark:text-white">
+
+    <!-- Toast Container -->
+    <div id="toastHost" class="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] w-[92vw] max-w-md space-y-2"></div>
+
+    <!-- Confirm Modal -->
+    <div id="confirmModal" class="fixed inset-0 bg-black/60 hidden items-center justify-center z-[9998]">
+      <div class="w-[92vw] max-w-md rounded-2xl bg-white shadow-2xl p-5">
+        <div class="flex items-start gap-3">
+          <div class="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center">
+            <i class="fa-solid fa-circle-question"></i>
+          </div>
+          <div class="flex-1">
+            <h3 id="confirmTitle" class="text-lg font-extrabold text-slate-900">Konfirmasi</h3>
+            <p id="confirmMsg" class="text-sm text-slate-600 mt-1">Apakah Anda yakin?</p>
+          </div>
+        </div>
+        <div class="mt-5 flex justify-end gap-2">
+          <button id="confirmCancel" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 font-semibold">Batal</button>
+          <button id="confirmOk" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold">Ya, lanjut</button>
+        </div>
+      </div>
+    </div>
+    <!-- Modal Unit -->
+    <div id="unitModal" class="fixed inset-0 bg-black/60 hidden flex items-center justify-center z-50">
+        <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-6 w-[92vw] max-w-sm">
+            <h2 class="text-xl font-extrabold mb-4 text-center text-slate-900 dark:text-white">Masukkan Nama Unit</h2>
+            <div class="mb-4">
+                <label class="block text-slate-700 dark:text-slate-700 dark:text-white/80 text-sm font-bold mb-2">Nama Unit (4 Huruf Kapital)</label>
+                <input type="text" id="unitName" maxlength="5" 
+                       class="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none text-slate-900 focus:ring-2 focus:ring-blue-500 uppercase"
+                       placeholder="Contoh: SRIE">
+                <p class="text-red-500 text-xs mt-1 hidden" id="unitError">Isi 4 huruf kapital (contoh: SRIE)</p>
+            </div>
+            <div class="flex justify-end">
+                <button onclick="setUnit()" 
+                        class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                    Simpan Unit
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Dashboard Container -->
+    <div id="adminContainer" class="hidden container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="rounded-2xl shadow-2xl border border-white/10 bg-white/10 backdrop-blur p-5 mb-6 text-white">
+            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                <div>
+                    <div class="flex items-center gap-3">
+                      <div class="w-10 h-10 rounded-2xl bg-white/15 flex items-center justify-center">
+                        <i class="fa-solid fa-chart-simple"></i>
+                      </div>
+                      <div>
+                        <h1 class="text-2xl font-extrabold tracking-tight">Dashboard Kendaraan (ADMIN)</h1>
+                        <p class="text-slate-600 dark:text-slate-600 dark:text-white/70">Monitoring input kendaraan per unit</p>
+                      </div>
+                    </div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" onclick="loadAdminData()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-500/20">
+                    <i class="fas fa-sync-alt mr-2"></i> Refresh
+                  </button>
+                  <button onclick="showUnitModal()" 
+                          class="bg-slate-900/10 hover:bg-slate-900/15 text-slate-900 dark:bg-white/15 dark:hover:bg-white/25 dark:text-white font-semibold py-2 px-4 rounded-xl border border-slate-200/60 dark:border-white/10">
+                      <i class="fa-solid fa-right-from-bracket mr-2"></i> Keluar
+                  </button>
+                  <button type="button" id="btnThemeAdmin"
+                          class="bg-slate-900/10 hover:bg-slate-900/15 text-slate-900 dark:bg-white/15 dark:hover:bg-white/25 dark:text-white font-semibold py-2 px-4 rounded-xl border border-slate-200/60 dark:border-white/10">
+                      <i class="fa-solid fa-moon mr-2"></i><span class="hidden sm:inline">Mode</span>
+                  </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <!-- Cards + unit list -->
+          <div class="lg:col-span-1 rounded-2xl shadow-2xl border border-slate-200/60 dark:border-white/10 bg-white/80 dark:bg-white/10 backdrop-blur p-6 text-slate-900 dark:text-white">
+            <div class="flex items-center justify-between">
+              <h2 class="text-xl font-bold">Ringkasan</h2>
+              <span id="adminLastUpd" class="text-xs text-slate-500 dark:text-white/60">-</span>
+            </div>
+            <div class="mt-4 grid grid-cols-2 gap-3">
+              <div class="rounded-2xl bg-slate-900 text-white p-4">
+                <div class="text-xs text-white/70">Total Unit</div>
+                <div id="statTotalUnit" class="text-2xl font-extrabold mt-1">0</div>
+              </div>
+              <div class="rounded-2xl bg-sky-600 text-white p-4">
+                <div class="text-xs text-white/80">Total Kendaraan</div>
+                <div id="statTotalRow" class="text-2xl font-extrabold mt-1">0</div>
+              </div>
+              <div class="rounded-2xl bg-emerald-600 text-white p-4 col-span-2">
+                <div class="text-xs text-white/80">Total Kapasitas (sum)</div>
+                <div id="statTotalCap" class="text-2xl font-extrabold mt-1">0</div>
+              </div>
+            </div>
+
+            <div class="mt-6">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="font-bold">Pilih Unit</h3>
+                <select id="adminSort" class="text-sm rounded-xl bg-white/90 text-slate-900 border border-slate-200/70 px-3 py-2">
+                  <option value="count_desc">Terbanyak</option>
+                  <option value="count_asc">Tersedikit</option>
+                  <option value="unit_asc">A-Z</option>
+                </select>
+              </div>
+              <div id="adminUnitList" class="space-y-2 max-h-[52vh] overflow-auto pr-1"></div>
+            </div>
+          </div>
+
+          <!-- Detail table -->
+          <div class="lg:col-span-2 rounded-2xl shadow-2xl border border-slate-200/60 dark:border-white/10 bg-white/80 dark:bg-white/10 backdrop-blur p-6 text-slate-900 dark:text-white">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h2 class="text-xl font-bold">Detail Unit: <span id="adminUnitTitle" class="font-extrabold">-</span></h2>
+                <p id="adminUnitMeta" class="text-xs text-slate-500 dark:text-white/60">Pilih unit di panel kiri.</p>
+              </div>
+              <div class="flex gap-2">
+                <button type="button" onclick="adminOpenUnitAsUser()" class="bg-violet-600 hover:bg-violet-700 text-white font-extrabold py-2.5 px-4 rounded-xl shadow-lg shadow-violet-500/20">
+                  <i class="fa-solid fa-eye mr-2"></i> Buka Mode Unit
+                </button>
+              </div>
+            </div>
+
+            <div class="mt-4">
+              <div class="relative">
+                <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                <input id="adminSearch" type="text" placeholder="Cari kode / type / driver / no HP / catatan…"
+                       class="w-full pl-10 pr-3 py-2 rounded-xl bg-white border border-slate-200/70 dark:bg-white/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-sky-400 text-slate-900 dark:text-white">
+              </div>
+            </div>
+
+            <div class="mt-4 overflow-x-auto rounded-xl border border-white/10">
+              <table class="min-w-full divide-y divide-slate-200/60 dark:divide-white/10">
+                <thead>
+                  <tr>
+                    <th class="px-4 py-3 bg-slate-50/80 dark:bg-white/5 text-left text-xs font-bold text-slate-600 dark:text-white/70 uppercase tracking-wider">Kode</th>
+                    <th class="px-4 py-3 bg-slate-50/80 dark:bg-white/5 text-left text-xs font-bold text-slate-600 dark:text-white/70 uppercase tracking-wider">Type</th>
+                    <th class="px-4 py-3 bg-slate-50/80 dark:bg-white/5 text-left text-xs font-bold text-slate-600 dark:text-white/70 uppercase tracking-wider">Driver</th>
+                    <th class="px-4 py-3 bg-slate-50/80 dark:bg-white/5 text-left text-xs font-bold text-slate-600 dark:text-white/70 uppercase tracking-wider">Unit</th>
+                  </tr>
+                </thead>
+                <tbody id="adminTable" class="bg-transparent divide-y divide-slate-200/60 dark:divide-white/10"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div id="mainContainer" class="hidden container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="rounded-2xl shadow-2xl border border-white/10 bg-white/10 backdrop-blur p-5 mb-6 text-white">
+            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                <div>
+                    <div class="flex items-center gap-3">
+                      <div class="w-10 h-10 rounded-2xl bg-white/15 flex items-center justify-center">
+                        <i class="fa-solid fa-car-side"></i>
+                      </div>
+                      <div>
+                        <h1 class="text-2xl font-extrabold tracking-tight">Sistem Manajemen Kendaraan</h1>
+                        <p class="text-slate-600 dark:text-slate-600 dark:text-white/70">Unit: <span id="currentUnit" class="font-bold text-slate-900 dark:text-white"></span></p>
+                      </div>
+                    </div>
+                </div>
+                <button onclick="showUnitModal()" 
+                        class="bg-slate-900/10 hover:bg-slate-900/15 text-slate-900 dark:bg-white/15 dark:hover:bg-white/25 dark:text-white font-semibold py-2 px-4 rounded-xl border border-slate-200/60 dark:border-white/10">
+                    <i class="fa-solid fa-pen-to-square mr-2"></i> Ganti Unit
+                </button>
+                <button type="button" id="btnTheme"
+                        class="ml-2 bg-slate-900/10 hover:bg-slate-900/15 text-slate-900 dark:bg-white/15 dark:hover:bg-white/25 dark:text-white font-semibold py-2 px-4 rounded-xl border border-slate-200/60 dark:border-white/10">
+                    <i class="fa-solid fa-moon mr-2"></i><span class="hidden sm:inline">Mode</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Form Input -->
+            <div class="rounded-2xl shadow-2xl border border-slate-200/60 dark:border-white/10 bg-white/80 dark:bg-white/10 backdrop-blur p-6 text-slate-900 dark:text-white">
+                <h2 class="text-xl font-bold mb-4">Input Data Kendaraan</h2>
+                <form id="vehicleForm">
+                    <input type="hidden" id="editId">
+                    
+                    <div class="mb-4">
+                        <label class="block text-slate-700 dark:text-white/80 text-sm font-bold mb-2">Kode Jenis</label>
+                        <select id="kodeJenis" class="w-full px-3 py-2 border border-white/10 rounded-xl bg-white/90 text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-400">
+                            <option value="">Pilih Kode</option>
+                            <option value="KD">KD - Kendaraan Dinas</option>
+                            <option value="KP">KP - Kendaraan Pribadi</option>
+                            <option value="KS">KS - Kendaraan Sewa</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-slate-700 dark:text-white/80 text-sm font-bold mb-2">Kode Nomor</label>
+                        <div id="kodeNumber" class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-white/15 border border-slate-200/60 dark:border-white/10 font-mono text-lg text-slate-900 dark:text-white">-</div>
+                        <p class="text-slate-500 dark:text-white/60 text-xs mt-1">Terisi otomatis.</p>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-slate-700 dark:text-white/80 text-sm font-bold mb-2">Kode Lengkap</label>
+                        <div id="fullCode" class="w-full px-3 py-3 rounded-xl bg-slate-900 text-white border border-slate-900/10 dark:border-white/10 font-extrabold tracking-wide text-xl">-</div>
+                        <p class="text-slate-500 dark:text-white/60 text-xs mt-1">Gunakan kode ini untuk QR Code.</p>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-slate-700 dark:text-white/80 text-sm font-bold mb-2">Type</label>
+                        <select id="type" class="w-full px-3 py-2 border border-white/10 rounded-xl bg-white/90 text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-400">
+                            <option value="">Pilih Type</option>
+                            <option value="JEEP">JEEP</option>
+                            <option value="MIBU">MIBU</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-slate-700 dark:text-white/80 text-sm font-bold mb-2">Capacity</label>
+                        <input type="number" id="capacity" 
+                               class="w-full px-3 py-2 border border-white/10 rounded-xl bg-white/90 text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                               placeholder="Masukkan kapasitas" min="1">
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-slate-700 dark:text-white/80 text-sm font-bold mb-2">Driver</label>
+                        <input type="text" id="driver" 
+                               class="w-full px-3 py-2 border border-white/10 rounded-xl bg-white/90 text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                               placeholder="Nama sopir">
+                    </div>
+
+                    <div class="mb-6">
+                        <label class="block text-slate-700 dark:text-white/80 text-sm font-bold mb-2">Driver Phone</label>
+                        <input type="text" id="driverPhone" 
+                               class="w-full px-3 py-2 border border-white/10 rounded-xl bg-white/90 text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                               placeholder="Nomor HP sopir">
+                        <p class="text-white/60 text-xs mt-1">Contoh: 081234567890</p>
+                    </div>
+
+                    <div class="mb-6">
+                        <label class="block text-slate-700 dark:text-white/80 text-sm font-bold mb-2">Catatan (Opsional)</label>
+                        <input type="text" id="catatan" 
+                               class="w-full px-3 py-2 border border-white/10 rounded-xl bg-white/90 text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                               placeholder="Contoh: KD EM / KP Doni / KS Badau">
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button type="button" onclick="saveVehicle()" id="saveBtn" 
+                                class="bg-sky-500 hover:bg-sky-600 text-white font-extrabold py-2.5 px-4 rounded-xl flex items-center gap-2 shadow-lg shadow-sky-500/20">
+                            <span>Simpan</span>
+                            <div id="saveSpinner" class="spinner hidden"></div>
+                        </button>
+                        <button type="button" onclick="cancelEdit()" id="cancelBtn" 
+                                class="bg-white/15 hover:bg-white/25 text-white font-semibold py-2.5 px-4 rounded-xl border border-white/10 hidden">
+                            Batal Edit
+                        </button>
+                        <button type="button" onclick="resetForm()" 
+                                class="bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-2.5 px-4 rounded-xl shadow-lg shadow-amber-500/20">
+                            Reset
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Data History -->
+            <div class="rounded-2xl shadow-2xl border border-slate-200/60 dark:border-white/10 bg-white/80 dark:bg-white/10 backdrop-blur p-6 text-slate-900 dark:text-white">
+                <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+                    <h2 class="text-xl font-bold">History Kendaraan</h2>
+                    <button onclick="loadData()" 
+                            class="bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-500/20">
+                        <i class="fas fa-sync-alt mr-2"></i> Refresh
+                    </button>
+                </div>
+                
+                <div class="overflow-x-auto rounded-xl border border-white/10">
+                    <table class="min-w-full divide-y divide-slate-200/60 dark:divide-white/10">
+                        <thead>
+                            <tr>
+                                <th class="px-4 py-3 bg-slate-50/80 dark:bg-white/5 text-left text-xs font-bold text-slate-600 dark:text-white/70 uppercase tracking-wider">Kode</th>
+                                <th class="px-4 py-3 bg-slate-50/80 dark:bg-white/5 text-left text-xs font-bold text-slate-600 dark:text-white/70 uppercase tracking-wider">Type</th>
+                                <th class="px-4 py-3 bg-slate-50/80 dark:bg-white/5 text-left text-xs font-bold text-slate-600 dark:text-white/70 uppercase tracking-wider">Driver</th>
+                                <th class="px-4 py-3 bg-slate-50/80 dark:bg-white/5 text-left text-xs font-bold text-slate-600 dark:text-white/70 uppercase tracking-wider">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dataTable" class="bg-transparent divide-y divide-slate-200/60 dark:divide-white/10">
+                            <!-- Data akan dimuat di sini -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="mt-4 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+                    <div class="flex-1">
+                      <div class="relative">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                        <input id="qSearch" type="text" placeholder="Cari kode / type / driver / no HP / catatan…"
+                               class="w-full pl-10 pr-3 py-2 rounded-xl bg-white border border-slate-200/70 dark:bg-white/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-sky-400 text-slate-900 dark:text-white">
+                      </div>
+                    </div>
+                    <div class="flex gap-2">
+                      <button onclick="printAllQRCodes()"
+                              class="bg-violet-600 hover:bg-violet-700 text-white font-extrabold py-2.5 px-4 rounded-xl shadow-lg shadow-violet-500/20">
+                        <i class="fas fa-print mr-2"></i> Print Semua QR
+                      </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Print QR Preview -->
+    <div id="printModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-4xl max-h-[90vh] overflow-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Preview Cetak Barcode</h2>
+                <button onclick="closePrintModal()" class="text-slate-600 dark:text-white/70 hover:text-white">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            <div id="printContent" class="grid grid-cols-1 gap-8">
+                <!-- Barcode akan dimuat di sini -->
+            </div>
+            <div class="mt-6 flex justify-end gap-2">
+                <button onclick="closePrintModal()" 
+                        class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
+                    Tutup
+                </button>
+                <button onclick="window.print()" 
+                        class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                    <i class="fas fa-print"></i> Cetak
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+:root{
+          --glass: rgba(255,255,255,.72);
+        }
+        @media print {
+            @page { size: A4 portrait; margin: 10mm; }
+            .page-break { page-break-after: always; }
+            .qr-sheet{ width:210mm; height:297mm; display:flex; align-items:center; justify-content:center; flex-direction:column; }
+            .qr-big{ width:180mm; height:180mm; }
+
+            body * {
+                visibility: hidden;
+            }
+            .qr-print, .qr-print * {
+                visibility: visible;
+            }
+            .qr-print {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+            }
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* Toast */
+        .toast-enter { transform: translateY(-8px); opacity: 0; }
+        .toast-enter-active { transform: translateY(0); opacity: 1; transition: all .18s ease; }
+        .toast-exit { opacity: 1; }
+        .toast-exit-active { opacity: 0; transition: opacity .18s ease; }
