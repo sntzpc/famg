@@ -84,67 +84,117 @@
   }
 
   // GAS URL (/exec) tetap boleh, karena JSONP akan lolos redirect 302
-  const GAS_URL = 'https://script.google.com/macros/s/AKfycbzLl_IVnLc3tcwl_emxiCGyq8aNJplz1Bcy6hf7SaH9lP4jhHCSrzGWmiCHyDoOrh9M-Q/exec';
+  const GAS_URL_EXEC = 'https://script.google.com/macros/s/AKfycbzLl_IVnLc3tcwl_emxiCGyq8aNJplz1Bcy6hf7SaH9lP4jhHCSrzGWmiCHyDoOrh9M-Q/exec';
 
-  // ========= JSONP HELPER (ANTI CORS, AMAN DI CHROME MOBILE) =========
-  function jsonpRequest(url, timeoutMs = 20000) {
+  const GAS_URL_GUC = 'PASTE_URL_GOOGLEUSERCONTENT_DISINI'; // <- WAJIB Anda isi
+
+  // cache base yang pernah berhasil
+  const LS_KEY_LAST_GOOD_BASE = 'fg_kendaraan_last_good_base_v1';
+
+  // -------------------------
+  // JSONP helpers (mobile-safe)
+  // -------------------------
+  function buildJsonpUrl(baseUrl, params, cbName){
+    const q = new URLSearchParams({
+      ...params,
+      callback: cbName,
+      _t: Date.now().toString()
+    });
+    return baseUrl + (baseUrl.includes('?') ? '&' : '?') + q.toString();
+  }
+
+  function jsonpCallOnce(baseUrl, params, timeoutMs = 30000){
     return new Promise((resolve, reject) => {
-      const cbName = '__cb_' + Math.random().toString(36).slice(2);
-      const sep = url.includes('?') ? '&' : '?';
-      const fullUrl = url + sep + 'callback=' + encodeURIComponent(cbName) + '&_ts=' + Date.now();
-
+      const cb = '__fg_jsonp_' + Date.now() + '_' + Math.random().toString(16).slice(2);
+      let script = null;
       let done = false;
-      const script = document.createElement('script');
+
+      const cleanUp = () => {
+        try { delete window[cb]; } catch(e){ window[cb] = undefined; }
+        if(script && script.parentNode) script.parentNode.removeChild(script);
+      };
 
       const timer = setTimeout(() => {
-        if (done) return;
+        if(done) return;
         done = true;
-        cleanup();
-        reject(new Error('JSONP timeout'));
+        cleanUp();
+        reject(new Error('Timeout: Tidak ada respon dari server (JSONP).'));
       }, timeoutMs);
 
-      function cleanup() {
-        clearTimeout(timer);
-        try { delete window[cbName]; } catch(e) { window[cbName] = undefined; }
-        if (script && script.parentNode) script.parentNode.removeChild(script);
-      }
-
-      window[cbName] = (data) => {
-        if (done) return;
+      window[cb] = (data) => {
+        if(done) return;
         done = true;
-        cleanup();
+        clearTimeout(timer);
+        cleanUp();
         resolve(data);
       };
 
+      const url = buildJsonpUrl(baseUrl, params, cb);
+
+      script = document.createElement('script');
+      script.async = true;
+      script.defer = true;
+      script.src = url;
+
+      // kompatibilitas Chrome mobile
+      script.crossOrigin = 'anonymous';
+      script.referrerPolicy = 'no-referrer-when-downgrade';
+
       script.onerror = () => {
-        if (done) return;
+        if(done) return;
         done = true;
-        cleanup();
-        reject(new Error('JSONP network error'));
+        clearTimeout(timer);
+        cleanUp();
+        reject(new Error('Gagal memuat JSONP. URL tidak publik / diblokir / salah base URL.'));
       };
 
-      script.src = fullUrl;
       document.head.appendChild(script);
     });
   }
 
-  function buildQuery(params) {
-    const usp = new URLSearchParams();
-    Object.keys(params || {}).forEach(k => {
-      const v = params[k];
-      if (v === undefined || v === null) return;
-      usp.append(k, String(v));
-    });
-    return usp.toString();
+  function getBaseCandidates(){
+    const list = [];
+
+    const lastGood = (localStorage.getItem(LS_KEY_LAST_GOOD_BASE) || '').trim();
+    if(lastGood) list.push(lastGood);
+
+    const guc = String(GAS_URL_GUC || '').trim();
+    if(guc && guc !== 'PASTE_URL_GOOGLEUSERCONTENT_DISINI') list.push(guc);
+
+    list.push(GAS_URL_EXEC);
+
+    return Array.from(new Set(list));
   }
 
-  async function apiCall(action, params = {}) {
-    const qs = buildQuery({ action, ...params });
-    const url = `${GAS_URL}?${qs}`;
-    return await jsonpRequest(url);
+  async function jsonpCall(params, timeoutMs = 30000){
+    const candidates = getBaseCandidates();
+    let lastErr = null;
+
+    for(const baseUrl of candidates){
+      try{
+        const res = await jsonpCallOnce(baseUrl, params, timeoutMs);
+        localStorage.setItem(LS_KEY_LAST_GOOD_BASE, baseUrl);
+        return res;
+      }catch(err){
+        lastErr = err;
+      }
+    }
+
+    const hint =
+      'Pastikan Web App GAS: Execute as Me, Who has access: Anyone. ' +
+      'Dan pastikan GAS_URL_GUC benar (script.googleusercontent.com).';
+
+    throw new Error(((lastErr && lastErr.message) ? lastErr.message : 'Gagal memuat data') + ' | ' + hint);
   }
 
-  
+  // -------------------------
+  // API wrapper (pakai jsonpCall dengan params {action,...})
+  // -------------------------
+  async function apiCall(action, params = {}, timeoutMs = 30000){
+    return await jsonpCall({ action, ...params }, timeoutMs);
+  }
+
+ 
   // ========= THEME (Light/Dark) =========
   const THEME_KEY = 'kend_theme';
   function getTheme(){
