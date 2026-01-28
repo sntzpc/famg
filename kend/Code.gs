@@ -1,6 +1,62 @@
 var SHEET_NAME = "Kendaraan";
 var SPREADSHEET_ID = "1sVmDbB0DxQWRsx9CTqCZMwf5kLgCkTT0br1ykmVUpGw";
 
+
+// === SHEET REGION (mapping Unit -> Region) ===
+var REGION_SHEET_NAME = "Region";
+
+function getRegionMap_(){
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sh = ss.getSheetByName(REGION_SHEET_NAME);
+  if(!sh) return {};
+  var values = sh.getDataRange().getValues();
+  if(values.length <= 1) return {};
+
+  // cari kolom Unit & Region dengan header fleksibel
+  var headers = values[0].map(function(h){ return String(h||'').trim().toLowerCase(); });
+  var colUnit = -1, colRegion = -1;
+  for(var i=0;i<headers.length;i++){
+    var h = headers[i];
+    if(colUnit === -1 && h.indexOf('unit') !== -1) colUnit = i;
+    if(colRegion === -1 && (h.indexOf('region') !== -1 || h.indexOf('wilayah') !== -1)) colRegion = i;
+  }
+  // fallback sederhana: asumsi 2 kolom pertama (Region, Unit) atau (Unit, Region)
+  if(colUnit === -1 || colRegion === -1){
+    if(headers.length >= 2){
+      if(colUnit === -1 && (headers[0].indexOf('unit') !== -1)) colUnit = 0;
+      if(colRegion === -1 && (headers[1].indexOf('region') !== -1 || headers[1].indexOf('wilayah') !== -1)) colRegion = 1;
+      if(colUnit === -1 && (headers[1].indexOf('unit') !== -1)) colUnit = 1;
+      if(colRegion === -1 && (headers[0].indexOf('region') !== -1 || headers[0].indexOf('wilayah') !== -1)) colRegion = 0;
+    }
+  }
+  if(colUnit === -1 || colRegion === -1){
+    // coba tebak: kolom yang isi mayoritas 4 huruf kapital = Unit
+    var guessUnit = -1, guessRegion = -1;
+    for(var c=0;c<Math.min(headers.length,6);c++){
+      var unitLike=0, nonEmpty=0;
+      for(var r=1;r<values.length;r++){
+        var v = String(values[r][c]||'').trim();
+        if(!v) continue;
+        nonEmpty++;
+        if(/^[A-Z]{4}$/.test(v)) unitLike++;
+      }
+      if(nonEmpty>0 && unitLike/nonEmpty > 0.6){ guessUnit = c; break; }
+    }
+    if(guessUnit !== -1){
+      guessRegion = (guessUnit===0 && headers.length>1) ? 1 : 0;
+      colUnit = guessUnit; colRegion = guessRegion;
+    }
+  }
+
+  var map = {};
+  for(var r=1;r<values.length;r++){
+    var unit = String(values[r][colUnit]||'').trim();
+    var region = String(values[r][colRegion]||'').trim();
+    if(unit) map[unit] = region || '';
+  }
+  return map;
+}
+
 // Skema kolom terbaru (ditambah: Catatan)
 var HEADERS = [
   "id",
@@ -196,6 +252,7 @@ function getData_(unit) {
     if (values.length <= 1) return { success: true, data: [] };
 
     var idx = headerMap_(sh);
+    var regionMap = getRegionMap_();
 
     var out = [];
     for (var i = 1; i < values.length; i++) {
@@ -204,6 +261,7 @@ function getData_(unit) {
         out.push({
           id: String(row[idx.id] || ""),
           Unit: String(row[idx.Unit] || ""),
+          Region: String(regionMap[String(row[idx.Unit]||'').trim()] || ''),
           Code: String(row[idx.Code] || ""),
           Type: String(row[idx.Type] || ""),
           Capacity: row[idx.Capacity] === "" ? "" : row[idx.Capacity],
@@ -230,12 +288,14 @@ function getAllData_() {
     if (values.length <= 1) return { success: true, data: [] };
 
     var idx = headerMap_(sh);
+    var regionMap = getRegionMap_();
     var out = [];
     for (var i = 1; i < values.length; i++) {
       var row = values[i];
       out.push({
         id: String(row[idx.id] || ""),
         Unit: String(row[idx.Unit] || ""),
+        Region: String(regionMap[String(row[idx.Unit]||'').trim()] || ''),
         Code: String(row[idx.Code] || ""),
         Type: String(row[idx.Type] || ""),
         Capacity: row[idx.Capacity] === "" ? "" : row[idx.Capacity],

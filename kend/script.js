@@ -5,7 +5,9 @@
   // ADMIN dashboard state
   const ADMIN_TOKEN = 'ADMIN';
   let adminAllData = [];              // seluruh data dari semua unit
-  let adminUnitStats = [];            // [{unit,count,capSum}]
+  let adminUnitStats = [];            // [{unit,region,count,capSum}]
+  let adminRegionStats = [];          // [{region,count,capSum,unitCount}]
+  let adminSelectedRegion = '';       // region aktif (filter unit list)
   let adminSelectedUnit = '';         // unit aktif di tabel detail
   let adminLastRows = [];             // cache rows yg dirender (untuk pencarian)
   let lastRenderedRows = [];          // cache rows unit-mode (untuk print all + search)
@@ -393,6 +395,7 @@
       adminAllData = res.data || [];
       buildAdminStats();
       renderAdminSummary();
+      renderAdminRegionList();
       renderAdminUnitList();
 
       // auto-select unit pertama jika belum ada
@@ -409,38 +412,137 @@
     }
   }
 
-  function buildAdminStats(){
-    const map = new Map();
-    for(const r of adminAllData){
-      const u = String(r.Unit||'').trim();
-      if(!u) continue;
-      if(!map.has(u)) map.set(u, {unit:u, count:0, capSum:0});
-      const o = map.get(u);
-      o.count += 1;
-      const cap = parseInt(String(r.Capacity||'').trim(), 10);
-      if(!isNaN(cap)) o.capSum += cap;
-    }
-    adminUnitStats = Array.from(map.values()).sort((a,b)=> b.count - a.count);
+  
+function buildAdminStats(){
+  const unitMap = new Map();
+  const regionMap = new Map();
+
+  for(const r of adminAllData){
+    const u = String(r.Unit||'').trim();
+    if(!u) continue;
+    const region = String(r.Region||'').trim() || 'Tanpa Region';
+
+    // unit stats
+    if(!unitMap.has(u)) unitMap.set(u, {unit:u, region, count:0, capSum:0});
+    const us = unitMap.get(u);
+    us.count += 1;
+    const cap = parseInt(String(r.Capacity||'').trim(), 10);
+    if(!isNaN(cap)) us.capSum += cap;
+
+    // region stats
+    if(!regionMap.has(region)) regionMap.set(region, {region, count:0, capSum:0, units:new Set()});
+    const rs = regionMap.get(region);
+    rs.count += 1;
+    if(!isNaN(cap)) rs.capSum += cap;
+    rs.units.add(u);
   }
 
-  function renderAdminSummary(){
+  adminUnitStats = Array.from(unitMap.values()).sort((a,b)=> b.count - a.count);
+  adminRegionStats = Array.from(regionMap.values())
+    .map(x => ({ region:x.region, count:x.count, capSum:x.capSum, unitCount:x.units.size }))
+    .sort((a,b)=> b.count - a.count);
+
+  // jika region terpilih tidak ada lagi, reset
+  if(adminSelectedRegion && !adminRegionStats.some(x => x.region === adminSelectedRegion)){
+    adminSelectedRegion = '';
+  }
+}
+
+function renderAdminSummary(){
+    const totalRegion = adminRegionStats.length;
     const totalUnit = adminUnitStats.length;
     const totalRow = adminAllData.length;
     const totalCap = adminUnitStats.reduce((a,b)=> a + (b.capSum||0), 0);
+    const elG = document.getElementById('statTotalRegion');
     const elU = document.getElementById('statTotalUnit');
     const elR = document.getElementById('statTotalRow');
     const elC = document.getElementById('statTotalCap');
+    if(elG) elG.textContent = String(totalRegion);
     if(elU) elU.textContent = String(totalUnit);
     if(elR) elR.textContent = String(totalRow);
     if(elC) elC.textContent = String(totalCap);
   }
+
+function renderAdminRegionList(){
+  const host = document.getElementById('adminRegionList');
+  const meta = document.getElementById('adminRegionMeta');
+  if(!host) return;
+
+  host.innerHTML = '';
+  const total = adminAllData.length;
+
+  // tombol "Semua Region"
+  const btnAll = document.createElement('button');
+  btnAll.type = 'button';
+  btnAll.className = `w-full text-left rounded-2xl px-4 py-3 border ${adminSelectedRegion ? 'border-slate-200/70 dark:border-white/10 bg-white/70 dark:bg-white/5' : 'border-indigo-200/70 dark:border-indigo-400/30 bg-indigo-50/70 dark:bg-indigo-500/10'} hover:bg-slate-50 dark:hover:bg-white/10 transition`;
+  btnAll.innerHTML = `
+    <div class="flex items-center justify-between">
+      <div class="font-extrabold">Semua Region</div>
+      <div class="text-xs px-2 py-1 rounded-full bg-slate-900 text-white">${total}</div>
+    </div>
+    <div class="text-xs text-slate-500 mt-1">Menampilkan semua unit</div>
+  `;
+  btnAll.addEventListener('click', () => {
+    adminSelectedRegion = '';
+    renderAdminRegionList();
+    renderAdminRegionList();
+      renderAdminUnitList();
+      renderAdminTable();
+    });
+  host.appendChild(btnAll);
+
+  adminRegionStats.forEach(r => {
+    const active = r.region === adminSelectedRegion;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `w-full text-left rounded-2xl px-4 py-3 border ${active ? 'border-indigo-200/70 dark:border-indigo-400/30 bg-indigo-50/70 dark:bg-indigo-500/10' : 'border-slate-200/70 dark:border-white/10 bg-white/70 dark:bg-white/5'} hover:bg-slate-50 dark:hover:bg-white/10 transition`;
+    btn.innerHTML = `
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <div class="font-extrabold">${escapeHtml(r.region)}</div>
+          <div class="text-xs text-slate-500 mt-0.5">${r.unitCount} unit</div>
+        </div>
+        <div class="text-xs px-2 py-1 rounded-full bg-slate-900 text-white">${r.count}</div>
+      </div>
+      <div class="text-xs text-slate-500 mt-1">Kapasitas sum: ${escapeHtml(String(r.capSum||0))}</div>
+    `;
+    btn.addEventListener('click', () => {
+      adminSelectedRegion = r.region;
+      // reset unit jika tidak termasuk region terpilih
+      if(adminSelectedUnit){
+        const u = adminUnitStats.find(x => x.unit === adminSelectedUnit);
+        if(!u || (String(u.region||'').trim()||'Tanpa Region') !== adminSelectedRegion){
+          adminSelectedUnit = '';
+        }
+      }
+      renderAdminRegionList();
+      renderAdminUnitList();
+      renderAdminTable();
+    });
+    host.appendChild(btn);
+  });
+
+  if(meta){
+    if(!adminSelectedRegion) meta.textContent = `Total ${adminRegionStats.length} region`;
+    else{
+      const r = adminRegionStats.find(x => x.region === adminSelectedRegion);
+      meta.textContent = r ? `${r.unitCount} unit • ${r.count} kendaraan` : '';
+    }
+  }
+}
+
+
 
   function renderAdminUnitList(){
     const host = document.getElementById('adminUnitList');
     if(!host) return;
     host.innerHTML = '';
     const sort = document.getElementById('adminSort')?.value || 'count_desc';
-    const arr = [...adminUnitStats];
+    let arr = [...adminUnitStats];
+    // filter berdasarkan region (jika dipilih)
+    if(adminSelectedRegion){
+      arr = arr.filter(x => (String(x.region||'').trim() || 'Tanpa Region') === adminSelectedRegion);
+    }
     if(sort === 'count_asc') arr.sort((a,b)=> a.count - b.count);
     else if(sort === 'unit_asc') arr.sort((a,b)=> a.unit.localeCompare(b.unit));
     else arr.sort((a,b)=> b.count - a.count);
@@ -453,6 +555,7 @@
       btn.innerHTML = `
         <div class="flex items-center justify-between">
           <div class="font-extrabold tracking-wide">${escapeHtml(s.unit)}</div>
+          <div class=\"text-xs text-slate-500 mt-0.5\">${escapeHtml(String(s.region||'')||'Tanpa Region')}</div>
           <div class="text-xs ${active ? 'text-sky-700 dark:text-sky-200' : 'text-slate-600 dark:text-white/60'}">${s.count} data</div>
         </div>
         <div class="mt-1 text-xs text-slate-500 dark:text-white/60">Kapasitas sum: <b>${s.capSum}</b></div>
