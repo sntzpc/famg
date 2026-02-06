@@ -287,21 +287,6 @@
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
 
-/* Loading animation */
-.loading-spinner {
-    width: 40px;
-    height: 40px;
-    border: 4px solid #f3f3f3;
-    border-top: 4px solid #3b82f6;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
 /* Tooltip */
 .tooltip {
     position: relative;
@@ -557,25 +542,42 @@
   .live-legend button{ padding:5px 8px; }
 }
 
- /* Spinner kecil, ringan, dan tidak mengganggu */
-  .btn-spinner{
+ /* Spinner untuk tombol */
+.btn-spinner {
     width: 1em;
     height: 1em;
-    border: 2px solid rgba(255,255,255,.45);
-    border-top-color: rgba(255,255,255,1);
-    border-radius: 9999px;
+    border: 2px solid rgba(255, 255, 255, 0.45);
+    border-top-color: #fff;
+    border-radius: 50%; /* alternatif: bisa pakai 50% atau 9999px */
     display: inline-block;
-    animation: btnspin .7s linear infinite;
+    animation: btnspin 0.7s linear infinite;
     vertical-align: -0.125em;
-  }
-  @keyframes btnspin { to { transform: rotate(360deg); } }
+}
 
-  /* Saat tombol loading: lebih jelas & tidak bisa diklik */
-  .is-loading{
+@keyframes btnspin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* State loading untuk tombol */
+.btn.is-loading {
     pointer-events: none;
-    opacity: .9;
-  }
+    opacity: 0.9;
+    cursor: not-allowed;
+}
 
-  .btn-spinner{ width:1em;height:1em;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;border-radius:9999px;display:inline-block;animation:btnspin .7s linear infinite;vertical-align:-0.125em;}
-@keyframes btnspin{to{transform:rotate(360deg)}}
-.is-loading{pointer-events:none;opacity:.9;}
+/* Loading animation */
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
