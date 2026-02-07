@@ -406,8 +406,20 @@ const state = {
 
 const $ = (q,el=document)=>el.querySelector(q);
 const $$ = (q,el=document)=>Array.from(el.querySelectorAll(q));
-const esc = (s)=>String(s??"").replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
-const uid = ()=> (crypto?.randomUUID ? crypto.randomUUID() : ("id-"+Math.random().toString(16).slice(2)+Date.now()));
+
+// ---- Chrome old-compat helpers (replace optional chaining) ----
+function oc(obj, key){
+  return (obj===null || obj===undefined) ? undefined : obj[key];
+}
+function ocall(obj, key){
+  if(obj===null || obj===undefined) return undefined;
+  var fn = obj[key];
+  if(typeof fn !== 'function') return undefined;
+  var args = Array.prototype.slice.call(arguments,2);
+  return fn.apply(obj, args);
+}
+const esc = (s)=>String((s==null?"":s)).replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
+const uid = ()=> (oc(crypto,"randomUUID") ? crypto.randomUUID() : ("id-"+Math.random().toString(16).slice(2)+Date.now()));
 
 function toast(msg, type="info"){
   const host = $("#toastHost");
@@ -439,7 +451,7 @@ function saveLS(){
   localStorage.setItem(LS.failed, JSON.stringify(state.failed||[]));
 }
 
-function safeJson(s){ try{ return JSON.parse(s); }catch{ return null; } }
+function safeJson(s){ try{ return JSON.parse(s); }catch(e){ return null; }}
 
 
 function minifyRatingRecord(r){
@@ -457,7 +469,7 @@ function minifyRatingRecord(r){
     team_name: r.team_name || '',
     criterion_id: r.criterion_id,
     criterion_name: r.criterion_name || '',
-    weight: (r.weight ?? null),
+    weight: ((r.weight==null)?null:r.weight),
     rating: r.rating,
     comment: r.comment || '',
     device_id: r.device_id || '',
@@ -484,7 +496,7 @@ function getGasBaseCandidates(){
 function buildJsonpUrl(baseUrl, action, params={}, payload=null, cbName=""){
   const q = new URLSearchParams();
   q.set("action", action);
-  if(state.session?.token) q.set("token", state.session.token);
+  if(oc(state.session,"token")) q.set("token", state.session.token);
 
   for(const [k,v] of Object.entries(params||{})){
     if(v!==undefined && v!==null) q.set(k, String(v));
@@ -551,7 +563,7 @@ function apiJsonp(action, params={}, payload=null){
           localStorage.setItem(LS_KEY_LAST_GOOD_BASE, baseUrl);
           return resolve(data);
         }else{
-          throw new Error(data?.error || data?.message || "Server error");
+          throw new Error(oc(data,"error") || oc(data,"message") || "Server error");
         }
 
       }catch(err){
@@ -579,7 +591,7 @@ function apiPm(action, params={}, payload=null){
           q.set("action", action);
           q.set("transport", "pm");
           q.set("cbid", cbid);
-          if(state.session?.token) q.set("token", state.session.token);
+          if(oc(state.session,"token")) q.set("token", state.session.token);
 
           for(const [k,v] of Object.entries(params||{})){
             if(v!==undefined && v!==null) q.set(k, String(v));
@@ -626,7 +638,7 @@ function apiPm(action, params={}, payload=null){
           localStorage.setItem(LS_KEY_LAST_GOOD_BASE, baseUrl);
           return resolve(data);
         }else{
-          throw new Error(data?.error || data?.message || "Server error");
+          throw new Error(oc(data,"error") || oc(data,"message") || "Server error");
         }
 
       }catch(err){
@@ -725,7 +737,7 @@ async function doLogin(){
     saveLS();
     closeLogin();
     refreshSessionUI();
-    toast("Login sukses: " + (res.profile?.name || nik), "ok");
+    toast("Login sukses: " + (oc(res.profile,"name") || nik), "ok");
     await refreshAdjustments();
     renderAll();
   }catch(err){
@@ -742,17 +754,17 @@ function showLoginMsg(msg){
 }
 
 function refreshSessionUI(){
-  const p = state.session?.profile;
+  const p = oc(state.session,"profile");
   $("#userLabel").textContent = p ? (p.name || p.nik) : "Login";
   $("#judgeName").textContent = p ? (p.name || "-") : "-";
 
-  const isAdmin = p?.role === "admin";
+  const isAdmin = oc(p,"role") === "admin";
   $("#tabAdminBtn").classList.toggle("hidden", !isAdmin);
 
   if(isAdmin){
-    $("#cfgTitle").value = state.config?.title || "";
-    $("#cfgEventId").value = state.config?.event_id || "";
-    $("#cfgMaxStars").value = state.config?.max_stars || 5;
+    $("#cfgTitle").value = oc(state.config,"title") || "";
+    $("#cfgEventId").value = oc(state.config,"event_id") || "";
+    $("#cfgMaxStars").value = oc(state.config,"max_stars") || 5;
     state.config = ensureConfigShape_(state.config || {});
     syncJsonFromState_();
     renderConfigBuilder_();
@@ -785,7 +797,7 @@ function updateTeams(){
   state.ui.competitionId = compId;
   const comp = cfg.competitions.find(c=>c.id===compId);
   const teamSel = $("#teamSelect");
-  const teams = comp?.teams || [];
+  const teams = oc(comp,"teams") || [];
   teamSel.innerHTML = `<option value="">-- pilih tim --</option>` + teams.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("");
   teamSel.value = "";
   state.ui.teamId = "";
@@ -810,7 +822,7 @@ function renderCriteria(){
   box.classList.remove("hidden");
   box.innerHTML = "";
 
-  const maxStars = Number(state.config?.max_stars||5);
+  const maxStars = Number(oc(state.config,"max_stars")||5);
 
   (comp.criteria||[]).forEach(cr=>{
     const card = document.createElement("div");
@@ -870,10 +882,13 @@ function setStars(card, val, maxStars){
 
 // ===== Data model =====
 function baseKey(compId, teamId, criterionId){
-  const eventId = state.config?.event_id || "FG";
-  const date = $("#eventDate").value || new Date().toISOString().slice(0,10);
-  const judgeNik = state.session?.profile?.nik || "UNKNOWN";
-  return `${eventId}|${date}|${compId}|${teamId}|${criterionId}|${judgeNik}`;
+  var eventId = oc(state.config, "event_id") || "FG";
+  var date = ($("#eventDate") && $("#eventDate").value) ? $("#eventDate").value : new Date().toISOString().slice(0,10);
+
+  var prof = oc(state.session, "profile");
+  var judgeNik = (prof && prof.nik) ? prof.nik : "UNKNOWN";
+
+  return eventId + "|" + date + "|" + compId + "|" + teamId + "|" + criterionId + "|" + judgeNik;
 }
 
 function findLocalByKey(compId, teamId, criterionId){
@@ -938,7 +953,7 @@ function scheduleAutoSync(delayMs=1800){
     _autoSyncTimer = null;
     try{
       if(!navigator.onLine) return;
-      if(!state.session?.token) return;
+      if(!oc(state.session,"token")) return;
       if(!state.outbox || state.outbox.length===0) return;
       await syncNow(); // sudah punya anti-double
     }catch(e){
@@ -947,60 +962,88 @@ function scheduleAutoSync(delayMs=1800){
   }, delayMs);
 }
 function saveRating(){
-  if(!state.session?.token){ toast("Silakan login dulu", "warn"); openLogin(); return; }
+  if(!oc(state.session,"token")){
+    toast("Silakan login dulu", "warn");
+    openLogin();
+    return;
+  }
 
-  const date = $("#eventDate").value;
-  const compId = $("#competitionType").value;
-  const teamId = $("#teamSelect").value;
+  var dateEl = $("#eventDate");
+  var compEl = $("#competitionType");
+  var teamEl = $("#teamSelect");
+
+  var date = dateEl ? dateEl.value : "";
+  var compId = compEl ? compEl.value : "";
+  var teamId = teamEl ? teamEl.value : "";
+
   if(!date){ toast("Tanggal penilaian wajib", "warn"); return; }
   if(!compId || !teamId){ toast("Pilih lomba dan tim dulu", "warn"); return; }
 
-  const cfg = state.config;
-  const comp = cfg.competitions.find(c=>c.id===compId);
-  const team = comp?.teams?.find(t=>t.id===teamId);
-  if(!comp || !team){ toast("Config lomba/tim tidak valid", "err"); return; }
+  var cfg = state.config || {};
+  var comps = cfg.competitions || [];
+  var comp = comps.find(function(c){ return c.id === compId; });
+  if(!comp){ toast("Config lomba tidak valid", "err"); return; }
 
-  const cards = $$("#criteriaContainer > div");
-  if(cards.length===0){ toast("Kriteria belum ada", "warn"); return; }
+  var teams = oc(comp,"teams") || [];
+  var team = teams.find(function(t){ return t.id === teamId; });
+  if(!team){ toast("Config tim tidak valid", "err"); return; }
 
-  const deviceId = localStorage.getItem(LS.device);
-  const judge = state.session.profile;
+  var cards = $$("#criteriaContainer > div");
+  if(!cards || cards.length===0){ toast("Kriteria belum ada", "warn"); return; }
 
-  const records = [];
-  const maxStars = Number(cfg.max_stars||5);
+  var deviceId = localStorage.getItem(LS.device) || "";
+  var judge = oc(state.session,"profile") || {};
 
-  for(const card of cards){
-    const criterionId = card.dataset.criterionId;
-    const val = Number(card.querySelector("[data-val]")?.textContent||0);
-    if(!(val>=1 && val<=maxStars)){ toast("Semua kriteria harus diberi nilai", "warn"); return; }
-    const comment = card.querySelector("[data-comment]")?.value?.trim() || "";
+  var maxStars = Number(cfg.max_stars || 5);
+  if(!maxStars || maxStars < 1) maxStars = 5;
 
-    const cr = comp.criteria.find(x=>x.id===criterionId);
-    const rec = {
-      event_id: cfg.event_id,
-      date,
-      judge_nik: judge.nik,
-      judge_name: judge.name,
+  var records = [];
+
+  for(var i=0;i<cards.length;i++){
+    var card = cards[i];
+    var criterionId = card.dataset ? card.dataset.criterionId : "";
+
+    var valEl = card.querySelector("[data-val]");
+    var val = Number(valEl ? valEl.textContent : 0);
+
+    if(!(val>=1 && val<=maxStars)){
+      toast("Semua kriteria harus diberi nilai", "warn");
+      return;
+    }
+
+    var cmtEl = card.querySelector("[data-comment]");
+    var comment = cmtEl ? String(cmtEl.value || "").trim() : "";
+
+    var crList = comp.criteria || [];
+    var cr = crList.find(function(x){ return x.id === criterionId; });
+    if(!cr){ toast("Kriteria tidak valid: " + criterionId, "err"); return; }
+
+    var rec = {
+      event_id: cfg.event_id || "FG",
+      date: date,
+      judge_nik: judge.nik || "UNKNOWN",
+      judge_name: judge.name || "",
       competition_id: comp.id,
-      competition_name: comp.name,
+      competition_name: comp.name || comp.id,
       category: comp.category || "",
       team_id: team.id,
-      team_name: team.name,
+      team_name: team.name || team.id,
       criterion_id: cr.id,
-      criterion_name: cr.name,
-      weight: Number(cr.weight||0),
+      criterion_name: cr.name || cr.id,
+      weight: Number(cr.weight || 0) || 0,
       rating: val,
-      comment,
+      comment: comment,
       device_id: deviceId,
       client_id: uid(),
       client_ts: new Date().toISOString()
     };
+
     rec.dedupe_key = baseKey(compId, teamId, criterionId);
 
-    // upsert local by dedupe_key, but keep stable client_id per update
-    const existing = state.ratings.find(r=>r.dedupe_key===rec.dedupe_key);
+    // stable client_id jika update record yang sama
+    var existing = state.ratings.find(function(r){ return r.dedupe_key === rec.dedupe_key; });
     if(existing){
-      rec.client_id = existing.client_id; // stable
+      rec.client_id = existing.client_id;
       rec.client_ts = new Date().toISOString();
     }
 
@@ -1013,6 +1056,9 @@ function saveRating(){
   refreshCounters();
   toast("Penilaian tersimpan di perangkat (pending sync)", "ok");
   renderResults();
+
+  // auto sync ringan
+  scheduleAutoSync(1200);
 }
 
 // ✅ FIX: missing function called by syncNow()
@@ -1038,7 +1084,7 @@ function renderFailedList(failed){
     // helper escape (pakai yang sudah ada bila tersedia)
     const esc = (window.utils && typeof window.utils.htmlEsc === 'function')
       ? window.utils.htmlEsc
-      : (s)=>String(s??'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+      : (s)=>String((s==null?'':s)).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
 
     // jika tidak ada yang gagal
     if(list.length === 0){
@@ -1051,10 +1097,10 @@ function renderFailedList(failed){
     if(box) box.classList.remove('hidden');
     if(host){
       host.innerHTML = list.map((r, i) => {
-        const dk = esc(r?.dedupe_key || '');
-        const team = esc(r?.team_name || r?.team_id || '');
-        const crit = esc(r?.criterion_name || r?.criterion_id || '');
-        const msg = esc(r?.error || r?.message || '');
+        const dk = esc(oc(r,"dedupe_key") || '');
+        const team = esc(oc(r,"team_name") || oc(r,"team_id") || '');
+        const crit = esc(oc(r,"criterion_name") || oc(r,"criterion_id") || '');
+        const msg = esc(oc(r,"error") || oc(r,"message") || '');
         return `
           <div class="border rounded-lg p-2 mb-2">
             <div class="text-xs text-gray-500 mb-1">#${i+1} ${dk}</div>
@@ -1071,68 +1117,69 @@ function renderFailedList(failed){
 
 // ===== Sync =====
 async function syncNow(){
-    saveRating();
   if(syncNow._busy){ toast("Sync sedang berjalan…", "warn"); return; }
   syncNow._busy = true;
+
   try{
-    if(!state.session?.token){ toast("Silakan login dulu", "warn"); openLogin(); return; }
-    if(state.outbox.length===0){ toast("Tidak ada data pending", "ok"); return; }
+    if(!oc(state.session,"token")){ toast("Silakan login dulu", "warn"); openLogin(); return; }
+    if(!state.outbox || state.outbox.length===0){ toast("Tidak ada data pending", "ok"); return; }
     if(!navigator.onLine){ toast("Anda sedang offline. Data tetap aman.", "warn"); return; }
 
-    let pending = [...state.outbox];
-    let okCount = 0, failCount = 0;
-
-    // Mulai dari batch kecil; jika masih kepanjangan/abort, otomatis diperkecil sampai 1 record.
-    let batchSize = 12;
+    var pending = state.outbox.slice();
+    var okCount = 0, failCount = 0;
+    var batchSize = 12;
 
     while(pending.length){
-      const batch = pending.slice(0, batchSize).map(minifyRatingRecord);
+      var rawBatch = pending.slice(0, batchSize);
+      var batch = rawBatch.map(minifyRatingRecord);
 
       try{
-        const res = await apiJsonp("ratings.saveBatch", {}, { records: batch });
-        okCount += (res.saved || batch.length);
+        var res = await apiJsonp("ratings.saveBatch", {}, { records: batch });
+        okCount += (res && res.saved) ? res.saved : batch.length;
 
-        // remove from outbox by client_id (pakai sumber pending, bukan batch minify)
-        const savedIds = new Set(pending.slice(0,batchSize).map(r=>r.client_id));
-        state.outbox = state.outbox.filter(r=>!savedIds.has(r.client_id));
+        // remove outbox by client_id
+        var savedIds = new Set(rawBatch.map(function(r){ return r.client_id; }));
+        state.outbox = state.outbox.filter(function(r){ return !savedIds.has(r.client_id); });
+
         saveLS();
         refreshCounters();
 
-        // potong pending sesuai batch yang sukses
         pending = pending.slice(batchSize);
-
-        // jika sukses, boleh naikkan batch sedikit (biar cepat) tapi tetap aman
         if(batchSize < 20) batchSize += 2;
 
       }catch(err){
-        // Jika abort/URL kepanjangan, kecilkan batch
         if(batchSize > 1){
           batchSize = Math.max(1, Math.floor(batchSize/2));
           continue;
         }
 
-        // batchSize sudah 1 tapi tetap gagal -> lempar ke failed (agar bisa retry)
-        const one = pending[0];
+        // tetap gagal untuk 1 record → pindahkan ke failed
+        var one = pending[0];
         failCount += 1;
+
         state.failed.push({
           id: uid(),
           at: new Date().toISOString(),
-          reason: String(err?.message || err || "sync failed"),
+          error: String(oc(err,"message") || err || "sync failed"),
           records: [one]
         });
-        // buang 1 record dari outbox & pending
-        state.outbox = state.outbox.filter(r=>r.client_id !== one.client_id);
+
+        state.outbox = state.outbox.filter(function(r){ return r.client_id !== one.client_id; });
+
         saveLS();
         refreshCounters();
+
         pending = pending.slice(1);
       }
     }
 
-    if(okCount && !failCount) toast(`✅ Sync sukses: ${okCount} record`, "ok");
-    else if(okCount && failCount) toast(`⚠️ Sync sebagian: ${okCount} sukses, ${failCount} gagal`, "warn");
-    else toast(`❌ Sync gagal (${failCount})`, "bad");
+    if(okCount && !failCount) toast("✅ Sync sukses: " + okCount + " record", "ok");
+    else if(okCount && failCount) toast("⚠️ Sync sebagian: " + okCount + " sukses, " + failCount + " gagal", "warn");
+    else toast("❌ Sync gagal (" + failCount + ")", "err");
 
-    renderFailedList();
+    // render panel failed yang memang ada di aplikasi Anda:
+    renderFailed();
+
   }finally{
     syncNow._busy = false;
   }
@@ -1140,20 +1187,28 @@ async function syncNow(){
 
 // ===== Failed Sync UI =====
 function renderFailed(){
-  const box = $("#failedList");
+  var box = $("#failedList");
+  if(!box) return;
+
   box.innerHTML = "";
-  if(state.failed.length===0){
-    box.innerHTML = `<div class="p-6 rounded-2xl border border-dashed border-slate-300 text-center text-slate-500">Tidak ada antrian gagal.</div>`;
+
+  if(!state.failed || state.failed.length===0){
+    box.innerHTML = '<div class="p-6 rounded-2xl border border-dashed border-slate-300 text-center text-slate-500">Tidak ada antrian gagal.</div>';
     return;
   }
-  state.failed.slice().reverse().forEach(item=>{
-    const el = document.createElement("div");
+
+  state.failed.slice().reverse().forEach(function(item){
+    var el = document.createElement("div");
     el.className = "p-4 rounded-2xl border border-slate-200 bg-slate-50";
+
+    var errText = item.error || item.reason || "sync failed";
+    var rec0 = (item.records && item.records.length) ? item.records[0] : {};
+
     el.innerHTML = `
       <div class="flex items-start justify-between gap-3">
         <div>
-          <div class="font-semibold text-rose-700">${esc(item.error)}</div>
-          <div class="text-xs text-slate-500">Waktu: ${esc(item.at)} • Records: <b>${item.records.length}</b></div>
+          <div class="font-semibold text-rose-700">${esc(errText)}</div>
+          <div class="text-xs text-slate-500">Waktu: ${esc(item.at || "")} • Records: <b>${(item.records||[]).length}</b></div>
         </div>
         <div class="flex items-center gap-2">
           <button class="btnRetry px-3 py-2 rounded-xl bg-rose-600 text-white hover:bg-rose-700" data-id="${esc(item.id)}"><i class="fa-solid fa-rotate mr-2"></i>Retry</button>
@@ -1161,17 +1216,18 @@ function renderFailed(){
         </div>
       </div>
       <div class="mt-3 text-xs text-slate-600">
-        Contoh: ${esc(item.records[0]?.competition_name||"-")} • ${esc(item.records[0]?.team_name||"-")} • ${esc(item.records[0]?.date||"-")}
+        Contoh: ${esc(rec0.competition_name || "-")} • ${esc(rec0.team_name || "-")} • ${esc(rec0.date || "-")}
       </div>
     `;
+
     box.appendChild(el);
   });
 
-  box.querySelectorAll(".btnRetry").forEach(btn=>{
-    btn.addEventListener("click", ()=> retryFailed(btn.dataset.id));
+  box.querySelectorAll(".btnRetry").forEach(function(btn){
+    btn.addEventListener("click", function(){ retryFailed(btn.dataset.id); });
   });
-  box.querySelectorAll(".btnRestore").forEach(btn=>{
-    btn.addEventListener("click", ()=> restoreFailed(btn.dataset.id));
+  box.querySelectorAll(".btnRestore").forEach(function(btn){
+    btn.addEventListener("click", function(){ restoreFailed(btn.dataset.id); });
   });
 }
 
@@ -1259,7 +1315,7 @@ function computeResults({compFilter="all", judgeFilter="all", mode="sum"}={}){
     }
 
     const adjVal = adj
-      .filter(a=>a.event_id=== (state.config?.event_id||"") && a.competition_id===g.competition_id && a.team_id===g.team_id)
+      .filter(a=>a.event_id=== (oc(state.config,"event_id")||"") && a.competition_id===g.competition_id && a.team_id===g.team_id)
       .reduce((s,a)=>s + (Number(a.value||0)||0), 0);
 
     const finalScore = score + adjVal;
@@ -1346,34 +1402,64 @@ function exportXlsx(){
   toast("Export XLSX dibuat", "ok");
 }
 
-// ===== Admin functions =====
-function updateAdminAdjTeams(){
-  const cfg = state.config || { competitions:[] };
-  const compId = $("#adjCompetition")?.value || "";
-  const comp = cfg.competitions.find(c=>c.id===compId);
-  const teams = comp?.teams || [];
-  const teamSel = $("#adjTeam");
-  if(teamSel) teamSel.innerHTML = `<option value="">-- pilih tim --</option>` + teams.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("");
+// helper aman ambil value element
+function getVal(sel, fallback){
+  var el = $(sel);
+  var v = el ? el.value : "";
+  if(v === undefined || v === null || v === "") return (fallback || "");
+  return v;
 }
 
+// helper aman addEventListener (kalau elemen null, tidak error)
+function on(el, ev, fn){
+  if(el) el.addEventListener(ev, fn);
+}
+
+// ===== Admin functions =====
+function updateAdminAdjTeams(){
+  var cfg = state.config || { competitions:[] };
+
+  var compId = getVal("#adjCompetition", "");
+  var comp = (cfg.competitions || []).find(function(c){ return c.id === compId; }) || null;
+
+  var teams = (comp && Array.isArray(comp.teams)) ? comp.teams : [];
+  var teamSel = $("#adjTeam");
+  if(teamSel){
+    teamSel.innerHTML =
+      '<option value="">-- pilih tim --</option>' +
+      teams.map(function(t){
+        return '<option value="'+esc(t.id)+'">'+esc(t.name)+'</option>';
+      }).join("");
+  }
+}
 
 async function saveConfigFromAdmin(){
   try{
-    if(state.session?.profile?.role!=="admin"){ toast("Akses admin diperlukan", "err"); return; }
+    var prof = oc(state.session, "profile");
+    if(!prof || prof.role !== "admin"){
+      toast("Akses admin diperlukan", "err");
+      return;
+    }
 
-    const title = $("#cfgTitle").value.trim();
-    const eventId = $("#cfgEventId").value.trim();
-    const maxStars = Number($("#cfgMaxStars").value||5) || 5;
+    var titleEl = $("#cfgTitle");
+    var eventEl = $("#cfgEventId");
+    var maxEl   = $("#cfgMaxStars");
 
-    // Default: ambil dari state (builder). Advanced: boleh override dari JSON jika user sengaja buka mode advanced.
-    let cfg = ensureConfigShape_(state.config || {});
-    const advBox = $("#cfgAdvancedBox");
-    const advOpen = advBox && !advBox.classList.contains("hidden");
+    var title = titleEl ? String(titleEl.value || "").trim() : "";
+    var eventId = eventEl ? String(eventEl.value || "").trim() : "";
+    var maxStars = Number(maxEl ? maxEl.value : 5) || 5;
+
+    // Default: ambil dari state (builder). Advanced: override dari JSON jika box advanced terbuka.
+    var cfg = ensureConfigShape_(state.config || {});
+    var advBox = $("#cfgAdvancedBox");
+    var advOpen = advBox && !advBox.classList.contains("hidden");
+
     if(advOpen){
       try{
-        const obj = JSON.parse($("#cfgJson").value);
+        var jsonEl = $("#cfgJson");
+        var obj = JSON.parse(jsonEl ? jsonEl.value : "{}");
         cfg = ensureConfigShape_(obj);
-      }catch(_){
+      }catch(e){
         // kalau JSON invalid, tetap pakai builder
       }
     }
@@ -1382,22 +1468,22 @@ async function saveConfigFromAdmin(){
     cfg.event_id = eventId || cfg.event_id || "FG";
     cfg.max_stars = maxStars;
 
-    // strict validation IDs (lebih ketat)
-    const idErrs = validateIdsStrict_(cfg);
+    var idErrs = validateIdsStrict_(cfg);
     if(idErrs.length){
       toast("Tidak bisa simpan: " + idErrs[0].msg, "err");
-      // highlight jika ada builder terbuka
       markDupIdsUI_();
       return;
     }
 
-    // warning bobot
-    const bad = (cfg.competitions||[]).filter(c => Math.round(weightSum_(c)*100)/100 !== 100);
+    var bad = (cfg.competitions||[]).filter(function(c){
+      return (Math.round(weightSum_(c)*100)/100) !== 100;
+    });
     if(bad.length){
       toast("Warning: ada lomba dengan total bobot ≠ 100. Tetap bisa simpan, tapi sebaiknya diperbaiki.", "warn");
     }
 
     await apiJsonpLarge("admin.saveConfig", {}, { config: cfg });
+
     state.config = cfg;
     saveLS();
     applyBranding();
@@ -1406,11 +1492,11 @@ async function saveConfigFromAdmin(){
     syncJsonFromState_();
     renderConfigBuilder_();
     toast("Config tersimpan ke server", "ok");
+
   }catch(err){
-    toast("Gagal simpan config: " + err.message, "err");
+    toast("Gagal simpan config: " + (err && err.message ? err.message : String(err)), "err");
   }
 }
-
 
 async function reloadConfigAdmin(){
   await refreshConfig();
@@ -1419,23 +1505,30 @@ async function reloadConfigAdmin(){
 
 function beautifyJson(){
   try{
-    const obj = JSON.parse($("#cfgJson").value);
-    $("#cfgJson").value = JSON.stringify(obj, null, 2);
+    var el = $("#cfgJson");
+    var obj = JSON.parse(el ? el.value : "{}");
+    if(el) el.value = JSON.stringify(obj, null, 2);
     toast("JSON dirapikan", "ok");
   }catch(err){
     toast("JSON tidak valid", "err");
   }
 }
 
-
 function applyJsonToForm(){
   try{
-    const obj = JSON.parse($("#cfgJson").value);
-    // jadikan config aktif (sehingga builder ikut berubah)
+    var el = $("#cfgJson");
+    var obj = JSON.parse(el ? el.value : "{}");
+
     state.config = ensureConfigShape_(obj);
-    $("#cfgTitle").value = state.config.title || "";
-    $("#cfgEventId").value = state.config.event_id || "";
-    $("#cfgMaxStars").value = state.config.max_stars || 5;
+
+    var titleEl = $("#cfgTitle");
+    var eventEl = $("#cfgEventId");
+    var maxEl   = $("#cfgMaxStars");
+
+    if(titleEl) titleEl.value = state.config.title || "";
+    if(eventEl) eventEl.value = state.config.event_id || "";
+    if(maxEl)   maxEl.value = state.config.max_stars || 5;
+
     syncJsonFromState_();
     renderConfigBuilder_();
     buildSelectors();
@@ -1447,9 +1540,6 @@ function applyJsonToForm(){
 
 /* =========================================================
    ✅ CONFIG BUILDER (VISUAL) - KISS
-   - Admin bisa edit lomba, tim, kriteria, bobot & deskripsi
-   - Semua perubahan langsung mengubah state.config (belum tersimpan
-     ke server sampai tombol "Simpan Config")
 ========================================================= */
 
 function ensureConfigShape_(cfg){
@@ -1506,7 +1596,7 @@ function makeUniqueId_(baseId, existsFn){
 }
 
 function auto100Weights_(comp){
-  const list = comp?.criteria || [];
+  const list = oc(comp,"criteria") || [];
   if(!list.length) throw new Error("Belum ada kriteria.");
   // weights numeric
   const w = list.map(c=>Number(c.weight||0) || 0);
@@ -1582,12 +1672,12 @@ function markDupIdsUI_(){
     }
     card.querySelectorAll('tr[data-row="team"] input[data-field="teamId"]').forEach(el=>{
       const id = normalizeId_(el.value);
-      const compId = normalizeId_(compIdEl?.value || "");
+      const compId = normalizeId_(oc(compIdEl,"value") || "");
       if(id) add(`team:${compId}:${id}`, el);
     });
     card.querySelectorAll('tr[data-row="cr"] input[data-field="crId"]').forEach(el=>{
       const id = normalizeId_(el.value);
-      const compId = normalizeId_(compIdEl?.value || "");
+      const compId = normalizeId_(oc(compIdEl,"value") || "");
       if(id) add(`cr:${compId}:${id}`, el);
     });
   });
@@ -1694,76 +1784,88 @@ function syncJsonFromState_(){
 }
 
 function weightSum_(comp){
-  return (comp?.criteria||[]).reduce((a,c)=>a+Number(c.weight||0),0);
+  return (oc(comp,"criteria")||[]).reduce((a,c)=>a+Number(c.weight||0),0);
 }
-
 
 function updateCompBadge_(compIdx){
   try{
-    const host = $("#cfgBuilder");
-    const root = host?.querySelector(`[data-comp-idx="${compIdx}"]`);
+    var host = $("#cfgBuilder");
+    if(!host) return;
+
+    var root = host.querySelector('[data-comp-idx="'+compIdx+'"]');
     if(!root) return;
-    const c = state.config?.competitions?.[compIdx];
+
+    var cfg = state.config || {};
+    var comps = cfg.competitions || [];
+    var c = comps[compIdx];
     if(!c) return;
-    const sum = weightSum_(c);
-    const sumOk = (Math.round(sum*100)/100) === 100;
-    const badge = root.querySelector(".badge");
-    if(badge){
-      badge.textContent = sumOk ? "Bobot 100 ✅" : ("Total bobot: " + sum + " (harus 100)");
-      badge.classList.toggle("bg-emerald-100", sumOk);
-      badge.classList.toggle("text-emerald-700", sumOk);
-      badge.classList.toggle("bg-amber-100", !sumOk);
-      badge.classList.toggle("text-amber-700", !sumOk);
-    }
-  }catch(_){}
+
+    var sum = weightSum_(c);
+    var sumOk = (Math.round(sum*100)/100) === 100;
+
+    var badge = root.querySelector(".badge");
+    if(!badge) return;
+
+    badge.textContent = sumOk ? "Bobot 100 ✅" : ("Total bobot: " + sum + " (harus 100)");
+    badge.classList.toggle("bg-emerald-100", sumOk);
+    badge.classList.toggle("text-emerald-700", sumOk);
+    badge.classList.toggle("bg-amber-100", !sumOk);
+    badge.classList.toggle("text-amber-700", !sumOk);
+  }catch(e){}
 }
+
 function renderConfigBuilder_(){
-  const host = $("#cfgBuilder");
+  var host = $("#cfgBuilder");
   if(!host) return;
 
-  const p = state.session?.profile;
+  var p = oc(state.session,"profile");
   if(!p || p.role!=="admin"){
-    host.innerHTML = `<div class="text-sm text-slate-500">Login admin untuk mengedit.</div>`;
+    host.innerHTML = '<div class="text-sm text-slate-500">Login admin untuk mengedit.</div>';
     return;
   }
 
-  const cfg = ensureConfigShape_(state.config || {});
+  var cfg = ensureConfigShape_(state.config || {});
   state.config = cfg;
 
   if(!cfg.competitions.length){
-    host.innerHTML = `
-      <div class="p-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50">
-        <div class="font-semibold">Belum ada jenis lomba</div>
-        <div class="text-sm text-slate-600 mt-1">
-          Klik <b>Tambah Lomba</b> untuk membuat jenis lomba pertama.
-        </div>
-      </div>`;
+    host.innerHTML =
+      '<div class="p-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50">' +
+        '<div class="font-semibold">Belum ada jenis lomba</div>' +
+        '<div class="text-sm text-slate-600 mt-1">Klik <b>Tambah Lomba</b> untuk membuat jenis lomba pertama.</div>' +
+      '</div>';
     return;
   }
 
-  host.innerHTML = cfg.competitions.map((c,idx)=>competitionCardHtml_(c, idx, !!state.ui.openCompIds[c._key]))
-    .join("");
+  host.innerHTML = cfg.competitions.map(function(c, idx){
+    return competitionCardHtml_(c, idx, !!state.ui.openCompIds[c._key]);
+  }).join("");
 
-  // bind per-card events
-  cfg.competitions.forEach((c,idx)=>{
-    const cKey = c._key;
-    const root = host.querySelector(`[data-comp-idx="${idx}"]`);
+  cfg.competitions.forEach(function(c, idx){
+    var cKey = c._key;
+    var root = host.querySelector('[data-comp-idx="'+idx+'"]');
     if(!root) return;
 
     // expand/collapse
-    const btnT = root.querySelector('[data-act="toggle"]');
-    const body = root.querySelector('[data-part="body"]');
-    btnT?.addEventListener("click", ()=>{
+    var btnT = root.querySelector('[data-act="toggle"]');
+    var body = root.querySelector('[data-part="body"]');
+    on(btnT, "click", function(){
+      if(!body) return;
       body.classList.toggle("hidden");
-      const isNowOpen = !body.classList.contains("hidden");
+      var isNowOpen = !body.classList.contains("hidden");
       state.ui.openCompIds[cKey] = isNowOpen;
-      btnT.querySelector("i")?.classList.toggle("fa-chevron-down");
-      btnT.querySelector("i")?.classList.toggle("fa-chevron-up");
+
+      // update icon
+      var ico = btnT.querySelector("i");
+      if(ico){
+        ico.classList.toggle("fa-chevron-down", !isNowOpen);
+        ico.classList.toggle("fa-chevron-up", isNowOpen);
+      }
     });
 
     // delete comp
-    root.querySelector('[data-act="delComp"]')?.addEventListener("click", ()=>{
-      if(!confirm(`Hapus lomba "${c.name}"?`)) return;
+    var delBtn = root.querySelector('[data-act="delComp"]');
+    on(delBtn, "click", function(){
+      if(!confirm('Hapus lomba "'+(c.name||"")+'"?')) return;
       if(cKey) delete state.ui.openCompIds[cKey];
       state.config.competitions.splice(idx,1);
       syncJsonFromState_();
@@ -1771,143 +1873,177 @@ function renderConfigBuilder_(){
     });
 
     // comp inputs
-    const inName = root.querySelector('[data-field="compName"]');
-    const inId   = root.querySelector('[data-field="compId"]');
-    inName?.addEventListener("input", ()=>{
-      c.name = inName.value.trim();
-      if(!inId.value.trim()) { c.id = normalizeId_(c.name); inId.value = c.id; }
+    var inName = root.querySelector('[data-field="compName"]');
+    var inId   = root.querySelector('[data-field="compId"]');
+
+    on(inName, "input", function(){
+      c.name = String(inName.value||"").trim();
+      if(inId && !String(inId.value||"").trim()){
+        c.id = normalizeId_(c.name);
+        inId.value = c.id;
+      }
       syncJsonFromState_();
       markDupIdsUI_();
-      root.querySelector('[data-part="headerName"]').textContent = c.name || c.id;
+
+      var headerName = root.querySelector('[data-part="headerName"]');
+      if(headerName) headerName.textContent = c.name || c.id;
     });
-    inId?.addEventListener("input", ()=>{
+
+    on(inId, "input", function(){
       c.id = normalizeId_(inId.value);
       inId.value = c.id;
       syncJsonFromState_();
       markDupIdsUI_();
     });
 
-    // copy / move (KISS)
-    root.querySelector('[data-act="copyComp"]')?.addEventListener("click", ()=>{
-      const copy = deepClone_(c);
+    // copy / move
+    var copyBtn = root.querySelector('[data-act="copyComp"]');
+    on(copyBtn, "click", function(){
+      var copy = deepClone_(c);
       copy._key = uid();
       copy.name = (copy.name || copy.id) + " (Copy)";
-      copy.id = makeUniqueId_(normalizeId_(copy.id || copy.name || "LOMBA_COPY"), id => state.config.competitions.some(x=>x.id===id));
+      copy.id = makeUniqueId_(normalizeId_(copy.id || copy.name || "LOMBA_COPY"), function(id){
+        return state.config.competitions.some(function(x){ return x.id === id; });
+      });
       state.config.competitions.splice(idx+1, 0, copy);
-      if(copy._key){ state.ui.openCompIds[copy._key] = true; }
+      if(copy._key) state.ui.openCompIds[copy._key] = true;
       syncJsonFromState_();
       renderConfigBuilder_();
       toast("Lomba diduplikasi", "ok");
     });
-    root.querySelector('[data-act="moveCompUp"]')?.addEventListener("click", ()=>{
+
+    var upBtn = root.querySelector('[data-act="moveCompUp"]');
+    on(upBtn, "click", function(){
       if(idx<=0) return;
-      const a = state.config.competitions;
-      [a[idx-1], a[idx]] = [a[idx], a[idx-1]];
+      var a = state.config.competitions;
+      var tmp = a[idx-1]; a[idx-1] = a[idx]; a[idx] = tmp;
       syncJsonFromState_();
       renderConfigBuilder_();
     });
-    root.querySelector('[data-act="moveCompDown"]')?.addEventListener("click", ()=>{
-      const a = state.config.competitions;
+
+    var downBtn = root.querySelector('[data-act="moveCompDown"]');
+    on(downBtn, "click", function(){
+      var a = state.config.competitions;
       if(idx>=a.length-1) return;
-      [a[idx], a[idx+1]] = [a[idx+1], a[idx]];
+      var tmp = a[idx+1]; a[idx+1] = a[idx]; a[idx] = tmp;
       syncJsonFromState_();
       renderConfigBuilder_();
     });
 
     // add team
-    root.querySelector('[data-act="addTeam"]')?.addEventListener("click", ()=>{
+    var addTeamBtn = root.querySelector('[data-act="addTeam"]');
+    on(addTeamBtn, "click", function(){
       c.teams.push({ id: normalizeId_("TIM"), name:"Tim Baru" });
       syncJsonFromState_();
       renderConfigBuilder_();
     });
 
     // add criterion
-    root.querySelector('[data-act="addCr"]')?.addEventListener("click", ()=>{
+    var addCrBtn = root.querySelector('[data-act="addCr"]');
+    on(addCrBtn, "click", function(){
       c.criteria.push({ id: normalizeId_("KRITERIA"), name:"Kriteria Baru", weight:0, desc:{} });
       syncJsonFromState_();
       renderConfigBuilder_();
     });
 
-    // auto 100% weights
-    root.querySelector('[data-act="auto100"]')?.addEventListener("click", ()=>{
+    // auto 100 weights
+    var autoBtn = root.querySelector('[data-act="auto100"]');
+    on(autoBtn, "click", function(){
       try{
         auto100Weights_(c);
         syncJsonFromState_();
         renderConfigBuilder_();
         toast("Bobot diatur otomatis (total 100)", "ok");
       }catch(err){
-        toast("Auto 100% gagal: " + err.message, "err");
+        toast("Auto 100% gagal: " + (err && err.message ? err.message : String(err)), "err");
       }
     });
 
-    // bind row actions (teams + criteria)
-    root.querySelectorAll('[data-row="team"]').forEach(row=>{
-      const tIdx = Number(row.dataset.tidx);
-      const t = c.teams[tIdx];
-      row.querySelector('[data-act="delTeam"]')?.addEventListener("click", ()=>{
-        if(!confirm(`Hapus tim "${t.name}"?`)) return;
+    // teams row binding
+    Array.prototype.forEach.call(root.querySelectorAll('[data-row="team"]'), function(row){
+      var tIdx = Number(row.dataset.tidx);
+      var t = c.teams[tIdx];
+
+      var del = row.querySelector('[data-act="delTeam"]');
+      on(del, "click", function(){
+        if(!confirm('Hapus tim "'+(t.name||"")+'"?')) return;
         c.teams.splice(tIdx,1);
         syncJsonFromState_();
         renderConfigBuilder_();
       });
-      const tn = row.querySelector('[data-field="teamName"]');
-      const tid= row.querySelector('[data-field="teamId"]');
-      tn?.addEventListener("input", ()=>{
-        t.name = tn.value.trim();
-        if(!tid.value.trim()) { t.id = normalizeId_(t.name); tid.value=t.id; }
+
+      var tn = row.querySelector('[data-field="teamName"]');
+      var tid= row.querySelector('[data-field="teamId"]');
+
+      on(tn, "input", function(){
+        t.name = String(tn.value||"").trim();
+        if(tid && !String(tid.value||"").trim()){
+          t.id = normalizeId_(t.name);
+          tid.value = t.id;
+        }
         syncJsonFromState_();
       });
-      tid?.addEventListener("input", ()=>{
+
+      on(tid, "input", function(){
         t.id = normalizeId_(tid.value);
         tid.value = t.id;
         syncJsonFromState_();
       });
     });
 
-    root.querySelectorAll('[data-row="cr"]').forEach(row=>{
-      const crIdx = Number(row.dataset.cridx);
-      const cr = c.criteria[crIdx];
+    // criteria row binding
+    Array.prototype.forEach.call(root.querySelectorAll('[data-row="cr"]'), function(row){
+      var crIdx = Number(row.dataset.cridx);
+      var cr = c.criteria[crIdx];
 
-      row.querySelector('[data-act="delCr"]')?.addEventListener("click", ()=>{
-        if(!confirm(`Hapus kriteria "${cr.name}"?`)) return;
+      var del = row.querySelector('[data-act="delCr"]');
+      on(del, "click", function(){
+        if(!confirm('Hapus kriteria "'+(cr.name||"")+'"?')) return;
         c.criteria.splice(crIdx,1);
         syncJsonFromState_();
         renderConfigBuilder_();
       });
 
-      const cn = row.querySelector('[data-field="crName"]');
-      const cid= row.querySelector('[data-field="crId"]');
-      const cw = row.querySelector('[data-field="crWeight"]');
-      cn?.addEventListener("input", ()=>{
-        cr.name = cn.value.trim();
-        if(!cid.value.trim()) { cr.id = normalizeId_(cr.name); cid.value=cr.id; }
+      var cn = row.querySelector('[data-field="crName"]');
+      var cid= row.querySelector('[data-field="crId"]');
+      var cw = row.querySelector('[data-field="crWeight"]');
+
+      on(cn, "input", function(){
+        cr.name = String(cn.value||"").trim();
+        if(cid && !String(cid.value||"").trim()){
+          cr.id = normalizeId_(cr.name);
+          cid.value = cr.id;
+        }
         syncJsonFromState_();
         markDupIdsUI_();
-        updateCompBadge_(idx); // update badge sum
+        updateCompBadge_(idx);
       });
-      cid?.addEventListener("input", ()=>{
+
+      on(cid, "input", function(){
         cr.id = normalizeId_(cid.value);
         cid.value = cr.id;
         syncJsonFromState_();
-      });
-      cw?.addEventListener("input", ()=>{
-        cr.weight = Number(cw.value||0) || 0;
-        syncJsonFromState_();
-        updateCompBadge_(idx); // update sum display
+        markDupIdsUI_();
       });
 
-      // desc editor
-      row.querySelector('[data-act="editDesc"]')?.addEventListener("click", ()=>{
+      on(cw, "input", function(){
+        cr.weight = Number(cw.value || 0) || 0;
+        syncJsonFromState_();
+        updateCompBadge_(idx);
+      });
+
+      var editBtn = row.querySelector('[data-act="editDesc"]');
+      on(editBtn, "click", function(){
         openDescEditor_(c, cr);
       });
     });
+
   });
 
   // enable drag-drop reorder + mark dupe IDs
   bindCompSortable_(host);
-  cfg.competitions.forEach((c,idx)=>{
-    const cKey = c._key;
-    const root = host.querySelector(`[data-comp-idx="${idx}"]`);
+  cfg.competitions.forEach(function(c, idx){
+    var root = host.querySelector('[data-comp-idx="'+idx+'"]');
     if(root){
       bindTableSortable_(root, idx, "team");
       bindTableSortable_(root, idx, "cr");
@@ -2068,7 +2204,7 @@ function competitionCardHtml_(c, idx, isOpen){
 }
 
 function openDescEditor_(comp, cr){
-  const maxStars = Number(state.config?.max_stars||5) || 5;
+  const maxStars = Number(oc(state.config,"max_stars")||5) || 5;
   const desc = cr.desc || (cr.desc = {});
   const rows = Array.from({length:maxStars}).map((_,i)=>{
     const n = i+1;
@@ -2126,7 +2262,7 @@ function openDescEditor_(comp, cr){
 
 
 async function refreshAdjustments(){
-  if(!state.session?.token) return;
+  if(!oc(state.session,"token")) return;
   try{
     const res = await apiJsonp("adjustments.list");
     state.adjustments = res.rows || [];
@@ -2136,54 +2272,69 @@ async function refreshAdjustments(){
 }
 
 async function saveAdjustment(){
-  if(state.session?.profile?.role!=="admin"){ toast("Adjustment hanya via admin (kesepakatan juri)", "warn"); return; }
-  const compId = $("#adjCompetition").value;
-  const teamId = $("#adjTeam").value;
-  const val = Number($("#adjValue").value||0) || 0;
-  const note = $("#adjNote").value.trim();
+  var prof = oc(state.session,"profile");
+  if(!prof || prof.role !== "admin"){
+    toast("Adjustment hanya via admin (kesepakatan juri)", "warn");
+    return;
+  }
+
+  var compId = getVal("#adjCompetition", "");
+  var teamId = getVal("#adjTeam", "");
+  var valEl = $("#adjValue");
+  var noteEl = $("#adjNote");
+
+  var val = Number(valEl ? valEl.value : 0) || 0;
+  var note = noteEl ? String(noteEl.value||"").trim() : "";
+
   if(!compId || !teamId){ toast("Pilih lomba dan tim", "warn"); return; }
 
   try{
     await apiJsonp("adjustments.save", {}, { adjustment:{
-      event_id: state.config?.event_id || "FG",
+      event_id: oc(state.config,"event_id") || "FG",
       competition_id: compId,
       team_id: teamId,
       value: val,
-      note
+      note: note
     }});
-    $("#adjValue").value = "";
-    $("#adjNote").value = "";
+
+    if(valEl) valEl.value = "";
+    if(noteEl) noteEl.value = "";
+
     await refreshAdjustments();
     renderResults();
     toast("Adjustment tersimpan", "ok");
   }catch(err){
-    toast("Gagal simpan adjustment: " + err.message, "err");
+    toast("Gagal simpan adjustment: " + (err && err.message ? err.message : String(err)), "err");
   }
 }
 
 async function adminLoadRatings(){
-  if(state.session?.profile?.role!=="admin") return;
+  var prof = oc(state.session,"profile");
+  if(!prof || prof.role !== "admin") return;
+
   try{
-    const res = await apiJsonp("admin.listRatings");
-    const rows = res.rows || [];
-    const body = $("#adminRatingsBody");
+    var res = await apiJsonp("admin.listRatings");
+    var rows = res && res.rows ? res.rows : [];
+
+    var body = $("#adminRatingsBody");
+    if(!body) return;
+
     body.innerHTML = "";
-    rows.slice(-500).reverse().forEach(r=>{
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td class="py-2 pr-3 whitespace-nowrap">${esc(String(r["date"]||"").slice(0,10))}</td>
-        <td class="py-2 pr-3">${esc(r["judge_name"]||r["judge_nik"]||"")}</td>
-        <td class="py-2 pr-3">${esc(r["competition_name"]||r["competition_id"]||"")}</td>
-        <td class="py-2 pr-3 font-semibold">${esc(r["team_name"]||r["team_id"]||"")}</td>
-        <td class="py-2 pr-3">${esc(r["criterion_name"]||r["criterion_id"]||"")}</td>
-        <td class="py-2 pr-3 text-right">${Number(r["weight"]||0).toFixed(0)}%</td>
-        <td class="py-2 pr-3 text-right">${Number(r["rating"]||0)}</td>
-        <td class="py-2 pr-3">${esc(r["comment"]||"")}</td>
-      `;
+    rows.slice(-500).reverse().forEach(function(r){
+      var tr = document.createElement("tr");
+      tr.innerHTML =
+        '<td class="py-2 pr-3 whitespace-nowrap">'+esc(String((r["date"]||"")).slice(0,10))+'</td>' +
+        '<td class="py-2 pr-3">'+esc(r["judge_name"]||r["judge_nik"]||"")+'</td>' +
+        '<td class="py-2 pr-3">'+esc(r["competition_name"]||r["competition_id"]||"")+'</td>' +
+        '<td class="py-2 pr-3 font-semibold">'+esc(r["team_name"]||r["team_id"]||"")+'</td>' +
+        '<td class="py-2 pr-3">'+esc(r["criterion_name"]||r["criterion_id"]||"")+'</td>' +
+        '<td class="py-2 pr-3 text-right">'+Number(r["weight"]||0).toFixed(0)+'%</td>' +
+        '<td class="py-2 pr-3 text-right">'+Number(r["rating"]||0)+'</td>' +
+        '<td class="py-2 pr-3">'+esc(r["comment"]||"")+'</td>';
       body.appendChild(tr);
     });
   }catch(err){
-    toast("Gagal load penilaian server: " + err.message, "err");
+    toast("Gagal load penilaian server: " + (err && err.message ? err.message : String(err)), "err");
   }
 }
 
@@ -2273,7 +2424,7 @@ function resetLocal(){
 
   // login modal
   $("#btnUser").addEventListener("click", ()=>{
-    if(state.session?.token){
+    if(oc(state.session,"token")){
       if(confirm("Logout?")){
         state.session=null;
         saveLS();
@@ -2319,7 +2470,7 @@ function resetLocal(){
     state.config.competitions.push({ _key: uid(), id: normalizeId_("LOMBA"), name:"Lomba Baru", teams:[], criteria:[] });
     // auto-open card yang baru dibuat
     const last = state.config.competitions[state.config.competitions.length-1];
-    if(last?._key){ state.ui.openCompIds[last._key] = true; }
+    if(oc(last,"_key")){ state.ui.openCompIds[last._key] = true; }
     syncJsonFromState_();
     renderConfigBuilder_();
   });

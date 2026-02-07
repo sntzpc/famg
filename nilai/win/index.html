@@ -255,7 +255,7 @@ function buildJsonpUrl(baseUrl, action, params={}, payload=null, cbName=""){
 
   // ✅ dukung token langsung dari session (skoring app) ATAU dari params
   const ses = readJSON(LS.session, null);
-  const sesToken = ses?.token || "";
+  const sesToken = oc(ses,"token") || "";
   if(sesToken && !("token" in (params||{}))) q.set("token", sesToken);
 
   for(const [k,v] of Object.entries(params||{})){
@@ -284,7 +284,19 @@ const LS = {
 };
 
 const $ = (q,el=document)=>el.querySelector(q);
-const esc = (s)=>String(s??"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const esc = (s)=>String((s==null?"":s)).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+// ---- Chrome old-compat helpers (replace optional chaining) ----
+function oc(obj, key){
+  return (obj===null || obj===undefined) ? undefined : obj[key];
+}
+function ocall(obj, key){
+  if(obj===null || obj===undefined) return undefined;
+  var fn = obj[key];
+  if(typeof fn !== 'function') return undefined;
+  var args = Array.prototype.slice.call(arguments,2);
+  return fn.apply(obj, args);
+}
 
 
 function setBtnLoading(btn, loading, busyText){
@@ -370,7 +382,7 @@ function apiJsonp(action, params={}, payload=null){
           try{ localStorage.setItem(LS_KEY_LAST_GOOD_BASE, baseUrl); }catch(_e){}
           return resolve(data);
         }else{
-          throw new Error(data?.error || data?.message || "Server error");
+          throw new Error(oc(data,"error") || oc(data,"message") || "Server error");
         }
 
       }catch(err){
@@ -393,7 +405,7 @@ const state = {
 
 function getToken(){
   const ses = readJSON(LS.session, null);
-  return ses?.token || "";
+  return oc(ses,"token") || "";
 }
 
 async function loadConfig(){
@@ -412,10 +424,10 @@ async function loadConfig(){
   }
 
   // Apply to UI
-  const title = state.config?.title || "Pengumuman Pemenang";
+  const title = oc(state.config,"title") || "Pengumuman Pemenang";
   $("#appTitle").textContent = title;
   document.title = title + " - Juara";
-  $("#appSub").textContent = (state.config?.event_id ? `Event: ${state.config.event_id}` : "Ambil data dari aplikasi penilaian, lalu tampilkan juara.");
+  $("#appSub").textContent = (oc(state.config,"event_id") ? `Event: ${state.config.event_id}` : "Ambil data dari aplikasi penilaian, lalu tampilkan juara.");
 }
 
 async function loadRatings(){
@@ -442,20 +454,20 @@ async function loadRatings(){
 function normalizeRating(r){
   // GAS rows bisa berupa number/date; paksa string field yang penting
   const o = {
-    event_id: r.event_id ?? "",
-    date: r.date ?? "",
-    judge_nik: String(r.judge_nik ?? "").trim(),
-    judge_name: r.judge_name ?? "",
-    competition_id: String(r.competition_id ?? "").trim(),
-    competition_name: r.competition_name ?? "",
-    category: r.category ?? "",
-    team_id: String(r.team_id ?? "").trim(),
-    team_name: r.team_name ?? "",
-    criterion_id: String(r.criterion_id ?? "").trim(),
-    criterion_name: r.criterion_name ?? "",
-    weight: (r.weight ?? 0),
-    rating: (r.rating ?? 0),
-    comment: r.comment ?? ""
+    event_id: ((r.event_id==null)?"":r.event_id),
+    date: ((r.date==null)?"":r.date),
+    judge_nik: String(((r.judge_nik==null)?"":r.judge_nik)).trim(),
+    judge_name: ((r.judge_name==null)?"":r.judge_name),
+    competition_id: String(((r.competition_id==null)?"":r.competition_id)).trim(),
+    competition_name: ((r.competition_name==null)?"":r.competition_name),
+    category: ((r.category==null)?"":r.category),
+    team_id: String(((r.team_id==null)?"":r.team_id)).trim(),
+    team_name: ((r.team_name==null)?"":r.team_name),
+    criterion_id: String(((r.criterion_id==null)?"":r.criterion_id)).trim(),
+    criterion_name: ((r.criterion_name==null)?"":r.criterion_name),
+    weight: (((r.weight==null)?0:r.weight)),
+    rating: (((r.rating==null)?0:r.rating)),
+    comment: ((r.comment==null)?"":r.comment)
   };
   // normalize numbers
   o.weight = Number(o.weight || 0);
@@ -519,15 +531,15 @@ function computeRanking({competitionId, mode="sum"}){
 }
 
 function getCompetitionName(id){
-  const comps = state.config?.competitions || [];
+  const comps = oc(state.config,"competitions") || [];
   const c = comps.find(x=>String(x.id)===String(id));
-  return c?.name || "";
+  return oc(c,"name") || "";
 }
 
 /* ===== UI render ===== */
 function fillCompetitionSelect(){
   const sel = $("#selComp");
-  const comps = state.config?.competitions || [];
+  const comps = oc(state.config,"competitions") || [];
   const options = comps.map(c=>`<option value="${esc(c.id)}">${esc(c.name || c.id)}</option>`);
   sel.innerHTML = options.length ? options.join("") : '<option value="">(Tidak ada kategori)</option>';
 }
@@ -819,9 +831,9 @@ function resetCeremony(){
 function toggleFullscreen(){
   const el = document.documentElement;
   if(!document.fullscreenElement){
-    el.requestFullscreen?.();
+    if(el.requestFullscreen) el.requestFullscreen();
   }else{
-    document.exitFullscreen?.();
+    if(document.exitFullscreen) document.exitFullscreen();
   }
 }
 
