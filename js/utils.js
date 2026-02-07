@@ -203,122 +203,157 @@ class Utils {
   // LIVE LOCATION TRACKING (Peserta -> Server)
   // ===============================
   startLiveLocationTracking(nik, opts = {}) {
-    if (!nik) return;
+  if (!nik) return;
 
-    const enable = (opts.enable !== undefined) ? !!opts.enable : true;
-    if (!enable) return;
+  const enable = (opts.enable !== undefined) ? !!opts.enable : true;
+  if (!enable) return;
 
-    if (!navigator.geolocation) {
-      console.warn('Geolocation tidak didukung');
-      return;
+  if (!navigator.geolocation) {
+    console.warn('Geolocation tidak didukung');
+    return;
+  }
+
+  this.stopLiveLocationTracking();
+
+  // NOTE:
+  // - Untuk event besar (±350 user, 10 jam) jangan kirim terlalu sering.
+  // - Default diarahkan ke 120 detik + jitter agar tidak "nembak bareng".
+  const sendMinMs = Number(opts.sendMinMs || 120000); // default 120 detik
+
+  // kompatibilitas: beberapa pemanggil memakai hiAccuracy/hiAcc/highAccuracy
+  const hiAcc = (opts.highAccuracy !== undefined) ? !!opts.highAccuracy :
+                (opts.hiAccuracy !== undefined) ? !!opts.hiAccuracy :
+                (opts.hiAcc !== undefined) ? !!opts.hiAcc : true;
+
+  // Kirim lebih cepat jika benar-benar berpindah jauh (bukan noise GPS)
+  const movedMinMs = Number(opts.movedMinMs || 15000);
+  const movedMinMeters = Number(opts.movedMinMeters || 25);
+
+  // Jitter agar request tersebar (menghindari burst 350 request pada detik yang sama)
+  const jitterMaxMs = Math.max(0, Number(opts.jitterMaxMs || 20000)); // 0..20 detik
+
+  this._liveLoc = {
+    nik: String(nik),
+    watchId: null,
+    lastSentAt: 0,
+    nextDueAt: 0,
+    jitterMs: (jitterMaxMs ? Math.floor(Math.random()*jitterMaxMs) : 0),
+    lastPayloadKey: '',
+    lastSentLat: null,
+    lastSentLng: null,
+    sampleTimer: null,
+    onVis: null
+  };
+
+  const shouldSend = (pos) => {
+    const now = Date.now();
+    const lat = Number(pos.coords.latitude);
+    const lng = Number(pos.coords.longitude);
+    const acc = Number(pos.coords.accuracy || 0);
+
+    if (!isFinite(lat) || !isFinite(lng)) return false;
+
+    if (!this._liveLoc.nextDueAt) {
+      this._liveLoc.nextDueAt = now + sendMinMs + this._liveLoc.jitterMs;
     }
 
-    this.stopLiveLocationTracking();
+    if (now >= this._liveLoc.nextDueAt) {
+      const key = `${lat.toFixed(5)}|${lng.toFixed(5)}|${Math.round(acc)}`;
+      this._liveLoc.lastPayloadKey = key;
+      return true;
+    }
 
-    const sendMinMs = Number(opts.sendMinMs || 30000);
-    const hiAcc = (opts.highAccuracy !== undefined) ? !!opts.highAccuracy : true;
-    const movedMinMs = Number(opts.movedMinMs || 3000);
-
-    this._liveLoc = {
-      nik: String(nik),
-      watchId: null,
-      lastSentAt: 0,
-      lastPayloadKey: '',
-      sampleTimer: null,
-      onVis: null
-    };
-
-    const shouldSend = (pos) => {
-      const now = Date.now();
-
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-      const acc = pos.coords.accuracy || 0;
-
-      const key = `${lat.toFixed(6)}|${lng.toFixed(6)}|${Math.round(acc)}`;
-
-      if (key !== this._liveLoc.lastPayloadKey) {
-        if (now - this._liveLoc.lastSentAt >= movedMinMs) {
+    // belum waktunya → kirim hanya kalau pindah signifikan
+    if (this._liveLoc.lastSentAt && (now - this._liveLoc.lastSentAt) >= movedMinMs) {
+      const prevLat = this._liveLoc.lastSentLat;
+      const prevLng = this._liveLoc.lastSentLng;
+      if (isFinite(prevLat) && isFinite(prevLng)) {
+        const d = this.calculateDistance(prevLat, prevLng, lat, lng);
+        if (isFinite(d) && d >= movedMinMeters) {
+          const key = `${lat.toFixed(5)}|${lng.toFixed(5)}|${Math.round(acc)}`;
           this._liveLoc.lastPayloadKey = key;
           return true;
         }
       }
+    }
 
-      if (now - this._liveLoc.lastSentAt >= sendMinMs) {
-        this._liveLoc.lastPayloadKey = key;
-        return true;
-      }
+    return false;
+  };
 
-      return false;
+  const send = async (pos, reason='') => {
+    if (!window.FGAPI?.public?.pushLiveLocation) return;
+
+    const loc = {
+      lat: pos.coords.latitude,
+      lng: pos.coords.longitude,
+      accuracy: pos.coords.accuracy || null,
+      speed: pos.coords.speed || null,
+      heading: pos.coords.heading || null,
+      ts: new Date(pos.timestamp || Date.now()).toISOString(),
+      reason: reason || null
     };
 
-    const send = async (pos, reason='') => {
-      if (!window.FGAPI?.public?.pushLiveLocation) return;
+    if (navigator.onLine === false) {
+      this.queueLiveLocation(this._liveLoc.nik, loc);
+      return;
+    }
 
-      const loc = {
-        lat: pos.coords.latitude,
-        lng: pos.coords.longitude,
-        accuracy: pos.coords.accuracy || null,
-        speed: pos.coords.speed || null,
-        heading: pos.coords.heading || null,
-        ts: new Date(pos.timestamp || Date.now()).toISOString(),
-        reason: reason || null
-      };
+    try { await this.flushLiveLocationQueue(50); } catch {}
 
-      if (navigator.onLine === false) {
-        this.queueLiveLocation(this._liveLoc.nik, loc);
-        return;
-      }
+    try {
+      await window.FGAPI.public.pushLiveLocation(this._liveLoc.nik, loc);
+      const now = Date.now();
+      this._liveLoc.lastSentAt = now;
+      this._liveLoc.lastSentLat = Number(loc.lat);
+      this._liveLoc.lastSentLng = Number(loc.lng);
 
-      try { await this.flushLiveLocationQueue(50); } catch {}
+      // jadwal berikutnya (interval + jitter baru)
+      this._liveLoc.jitterMs = (jitterMaxMs ? Math.floor(Math.random()*jitterMaxMs) : 0);
+      this._liveLoc.nextDueAt = now + sendMinMs + this._liveLoc.jitterMs;
+    } catch (e) {
+      this.queueLiveLocation(this._liveLoc.nik, loc);
+      console.warn('pushLiveLocation error:', e?.message || e);
+    }
+  };
 
-      try {
-        await window.FGAPI.public.pushLiveLocation(this._liveLoc.nik, loc);
-        this._liveLoc.lastSentAt = Date.now();
-      } catch (e) {
-        this.queueLiveLocation(this._liveLoc.nik, loc);
-        console.warn('pushLiveLocation error:', e?.message || e);
-      }
-    };
+  const onPos = (pos) => {
+    if (!this._liveLoc) return;
+    if (shouldSend(pos)) send(pos);
+  };
 
-    const onPos = (pos) => {
-      if (!this._liveLoc) return;
-      if (shouldSend(pos)) send(pos);
-    };
+  const onErr = (err) => {
+    console.warn('watchPosition error:', err);
+  };
 
-    const onErr = (err) => {
-      console.warn('watchPosition error:', err);
-    };
+  this._liveLoc.watchId = navigator.geolocation.watchPosition(onPos, onErr, {
+    enableHighAccuracy: hiAcc,
+    maximumAge: 10000,
+    timeout: 20000
+  });
 
-    this._liveLoc.watchId = navigator.geolocation.watchPosition(onPos, onErr, {
-      enableHighAccuracy: hiAcc,
-      maximumAge: 10000,
-      timeout: 20000
-    });
+  // Periodic sampling (lebih stabil di mobile saat watchPosition ditunda OS)
+  const sampleEveryMs = Number(opts.sampleEveryMs || (10*60*1000)); // default 10 menit
+  const sampleOnce = () => {
+    try{
+      navigator.geolocation.getCurrentPosition(
+        (p)=>{ if(this._liveLoc && shouldSend(p)) send(p,'sample'); },
+        (_e)=>{},
+        { enableHighAccuracy: hiAcc, maximumAge: 0, timeout: 20000 }
+      );
+    }catch{}
+  };
 
-    // Periodic sampling (lebih stabil di mobile saat watchPosition ditunda OS)
-    const sampleEveryMs = Number(opts.sampleEveryMs || (10*60*1000)); // default 10 menit
-    const sampleOnce = () => {
-      try{
-        navigator.geolocation.getCurrentPosition(
-          (p)=>{ if(this._liveLoc && shouldSend(p)) send(p,'sample'); },
-          (_e)=>{},
-          { enableHighAccuracy: hiAcc, maximumAge: 0, timeout: 20000 }
-        );
-      }catch{}
-    };
+  try{ sampleOnce(); }catch{}
+  this._liveLoc.sampleTimer = setInterval(sampleOnce, sampleEveryMs);
 
-    try{ sampleOnce(); }catch{}
-    this._liveLoc.sampleTimer = setInterval(sampleOnce, sampleEveryMs);
+  const onVis = () => {
+    if (document.visibilityState === 'visible') sampleOnce();
+  };
+  document.addEventListener('visibilitychange', onVis);
+  this._liveLoc.onVis = onVis;
 
-    const onVis = () => {
-      if (document.visibilityState === 'visible') sampleOnce();
-    };
-    document.addEventListener('visibilitychange', onVis);
-    this._liveLoc.onVis = onVis;
-
-    window.addEventListener('beforeunload', () => this.stopLiveLocationTracking(), { once: true });
-  }
+  window.addEventListener('beforeunload', () => this.stopLiveLocationTracking(), { once: true });
+}
 
   stopLiveLocationTracking() {
     try {

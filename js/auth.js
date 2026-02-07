@@ -575,11 +575,21 @@ class Auth {
                 const cfg = window.AppConfig || {};
                 const ll = cfg.liveLocation || {};
                 this.utils.startLiveLocationTracking(this.currentUser.nik, {
-                    enable: ll.enable !== false,
-                    hiAccuracy: ll.hiAccuracy !== false,
-                    sendMinMs: ll.sendMinMs || 30000,
-                    sampleEveryMs: ll.sampleEveryMs || (10*60*1000),
-                    movedMinMs: ll.movedMinMs || 3000
+                enable: ll.enable !== false,
+                hiAccuracy: ll.hiAccuracy !== false,
+
+                // interval utama (default 120 detik utk event besar)
+                sendMinMs: ll.sendMinMs || 120000,
+
+                // jitter agar tidak "nembak bareng" saat 350 user
+                jitterMaxMs: (ll.jitterMaxMs != null) ? ll.jitterMaxMs : 20000,
+
+                // kirim lebih cepat hanya jika berpindah signifikan
+                movedMinMs: ll.movedMinMs || 15000,
+                movedMinMeters: (ll.movedMinMeters != null) ? ll.movedMinMeters : 25,
+
+                // backup sampling
+                sampleEveryMs: ll.sampleEveryMs || (10*60*1000)
                 });
             }catch{}
 

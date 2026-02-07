@@ -280,6 +280,24 @@ window.AppConfig = {
     get api(){ return _MERGED.api; },
     get event(){ return _MERGED.event; },
     get app(){ return _MERGED.app; },
+    liveLocation: {
+      enable: true,
+      hiAccuracy: true,
+
+      // Interval minimum pengiriman (ms)
+      // ⚠️ Default 120 detik agar aman untuk 350 user
+      sendMinMs: 120000,
+
+      // Jitter acak 0..jitterMaxMs (ms) untuk sebar beban request
+      jitterMaxMs: 20000,
+
+      // Kirim lebih cepat jika berpindah jauh (menghindari spam karena noise GPS)
+      movedMinMs: 15000,
+      movedMinMeters: 25,
+
+      // Sampling tambahan (backup) kalau watchPosition ditahan OS
+      sampleEveryMs: 10 * 60 * 1000
+    },
     get security(){ return _MERGED.security; },
     get ui(){ return _MERGED.ui; },
     get colors(){ return _MERGED.colors; },
