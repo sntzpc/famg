@@ -9,10 +9,13 @@ const CONFIG = {
     ADJUST: 'adjustments',
     LOG: 'api_log',
     OTP: 'otp',
-    OTP_REQ: 'otp_requests'
+    OTP_REQ: 'otp_requests',
+    ADMIN_AUTH: 'admin_auth'
   },
   SESSION_HOURS: 24,
-  MAX_JSONP_CHUNK: 60 // max records per request untuk JSONP
+  MAX_JSONP_CHUNK: 60,
+  // ✅ Isi NIK admin di sini (fallback jika sheet admin_users kosong)
+  BOOTSTRAP_ADMIN_NIKS: ['20120134'] // max records per request untuk JSONP
 };
 
 function doGet(e){ return handle_(e); }
@@ -55,6 +58,8 @@ function route_(action, p, body){
     case 'public.getConfig': return publicGetConfig_();
     case 'auth.login': return authLogin_(p, body);
     case 'auth.me': return authMe_(p);
+    case 'admin.auth.changePassword': return adminAuthChangePassword_(p, body);
+    case 'admin.auth.resetPassword': return adminAuthResetPassword_(p, body);
     case 'admin.saveConfig': return adminSaveConfig_(p, body);
     case 'admin.saveConfigChunk': return adminSaveConfigChunk_(p, body);
     case 'admin.listRatings': return adminListRatings_(p);
@@ -68,6 +73,8 @@ function route_(action, p, body){
     case 'ratings.listMine': return ratingsListMine_(p);
     case 'adjustments.save': return adjustmentsSave_(p, body);
     case 'adjustments.list': return adjustmentsList_(p);
+    case 'admin.staff.list': return adminStaffList_(p);
+    case 'admin.staff.setJuri': return adminStaffSetJuri_(p, body);
     default:
       return { ok:false, error:'Unknown action: ' + action };
   }
@@ -292,30 +299,132 @@ function upsertKey_(sh, key, value, now, by){
    AUTH
 ========================= */
 
+
+function sha256Hex_(s){
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, s, Utilities.Charset.UTF_8);
+  const hex = bytes.map(function(b){
+    const v = (b < 0) ? b + 256 : b;
+    return ('0' + v.toString(16)).slice(-2);
+  }).join('');
+  return hex;
+}
+
+function ensureAdminAuth_(){
+  const sh = ensureSheet_(CONFIG.SHEETS.ADMIN_AUTH, ['username','passwordHash','updated_at','updated_by']);
+  // bootstrap default if empty
+  if(sh.getLastRow() < 2){
+    const now = new Date().toISOString();
+    sh.appendRow(['admin', sha256Hex_('admin123'), now, 'SYSTEM']);
+  }
+  return sh;
+}
+
+function adminAuthGet_(username){
+  const sh = ensureAdminAuth_();
+  const lr = sh.getLastRow();
+  if(lr < 2) return null;
+  const data = sh.getRange(2,1,lr-1,4).getValues();
+  for(let i=0;i<data.length;i++){
+    if(String(data[i][0]||'').trim().toLowerCase() === String(username||'').trim().toLowerCase()){
+      return { username: String(data[i][0]||'').trim(), passwordHash: String(data[i][1]||'').trim() };
+    }
+  }
+  return null;
+}
+
+function adminAuthUpsert_(username, passwordHash, updatedBy){
+  const sh = ensureAdminAuth_();
+  const lr = sh.getLastRow();
+  const now = new Date().toISOString();
+  if(lr < 2){
+    sh.appendRow([username, passwordHash, now, updatedBy||'']);
+    return;
+  }
+  const data = sh.getRange(2,1,lr-1,1).getValues();
+  for(let i=0;i<data.length;i++){
+    if(String(data[i][0]||'').trim().toLowerCase() === String(username||'').trim().toLowerCase()){
+      sh.getRange(i+2,2,1,3).setValues([[passwordHash, now, updatedBy||'']]);
+      return;
+    }
+  }
+  sh.appendRow([username, passwordHash, now, updatedBy||'']);
+}
+
+function parseAdminUsername_(ses){
+  // ses.nik for admin will be "ADMIN:<username>"
+  const s = String(ses && ses.nik || '');
+  if(s.toUpperCase().indexOf('ADMIN:')===0) return s.slice(6);
+  return 'admin';
+}
+
+function adminAuthChangePassword_(p, body){
+  const ses = requireAdmin_(p);
+  const newPass = String((p.newPassword || (body && body.newPassword) || '')).trim();
+  if(!newPass) return { ok:false, error:'Password baru wajib diisi' };
+  if(newPass.length < 6) return { ok:false, error:'Password minimal 6 karakter' };
+  const username = parseAdminUsername_(ses);
+  adminAuthUpsert_(username, sha256Hex_(newPass), ses.nik);
+  return { ok:true };
+}
+
+function adminAuthResetPassword_(p, body){
+  const ses = requireAdmin_(p);
+  const username = parseAdminUsername_(ses);
+  adminAuthUpsert_(username, sha256Hex_('admin123'), ses.nik);
+  return { ok:true };
+}
+
+
 function authLogin_(p, body){
+  const username = String((p.username || (body && body.username) || '')).trim();
+  const password = String((p.password || (body && body.password) || '')).trim();
+
+  // === Admin login (username + password) ===
+  if(username){
+    if(!password) return { ok:false, error:'Password wajib diisi' };
+    const rec = adminAuthGet_(username);
+    if(!rec) return { ok:false, error:'Username / password salah' };
+    if(sha256Hex_(password) !== rec.passwordHash) return { ok:false, error:'Username / password salah' };
+
+    const token = Utilities.getUuid().replace(/-/g,'');
+    const exp = new Date(Date.now() + CONFIG.SESSION_HOURS*3600*1000);
+    const sh = ensureSheet_(CONFIG.SHEETS.SESSIONS, ['token','nik','role','exp_iso','created_at']);
+    sh.appendRow([token, 'ADMIN:' + rec.username, 'admin', exp.toISOString(), new Date().toISOString()]);
+
+    return { ok:true, token, exp: exp.toISOString(), profile:{
+      nik: 'ADMIN:' + rec.username,
+      name: 'Administrator',
+      region: '',
+      unit: '',
+      role: 'admin',
+      username: rec.username
+    }};
+  }
+
+  // === Juri login (NIK tanpa password) ===
   const nik = String((p.nik || (body && body.nik) || '')).trim();
   if(!nik) return { ok:false, error:'NIK wajib' };
 
   const staff = getStaffByNik_(nik);
   if(!staff) return { ok:false, error:'NIK tidak ditemukan di data_staff' };
-  if(String(staff.juri||'').toUpperCase() !== 'TRUE') return { ok:false, error:'NIK ini tidak punya hak sebagai juri' };
 
-  const isAdmin = isAdminNik_(nik);
+  if(String(staff.juri||'').toUpperCase() !== 'TRUE') return { ok:false, error:'NIK ini tidak punya hak sebagai juri' };
 
   const token = Utilities.getUuid().replace(/-/g,'');
   const exp = new Date(Date.now() + CONFIG.SESSION_HOURS*3600*1000);
 
   const sh = ensureSheet_(CONFIG.SHEETS.SESSIONS, ['token','nik','role','exp_iso','created_at']);
-  sh.appendRow([token, nik, isAdmin ? 'admin' : 'juri', exp.toISOString(), new Date().toISOString()]);
+  sh.appendRow([token, nik, 'juri', exp.toISOString(), new Date().toISOString()]);
 
   return { ok:true, token, exp: exp.toISOString(), profile:{
     nik: nik,
     name: staff.name || '',
     region: staff.region || '',
     unit: staff.unit || '',
-    role: isAdmin ? 'admin' : 'juri'
+    role: 'juri'
   }};
 }
+
 
 function authMe_(p){
   const ses = requireSession_(p);
@@ -334,13 +443,26 @@ function requireSession_(p){
       const expIso = String(data[i][3]||'');
       if(expIso && new Date(expIso).getTime() < Date.now()) throw new Error('Session expired. Login ulang.');
       const nik = String(data[i][1]||'');
+      const role = String(data[i][2]||'juri');
+      if(role === 'admin'){
+        // nik is "ADMIN:<username>"
+        const uname = nik && nik.toUpperCase().indexOf('ADMIN:')===0 ? nik.slice(6) : 'admin';
+        return {
+          nik: nik || ('ADMIN:' + uname),
+          username: uname,
+          name: 'Administrator',
+          region: '',
+          unit: '',
+          role: 'admin'
+        };
+      }
       const staff = getStaffByNik_(nik) || {};
       return {
         nik,
         name: staff.name||'',
         region: staff.region||'',
         unit: staff.unit||'',
-        role: String(data[i][2]||'juri')
+        role: role
       };
     }
   }
@@ -384,13 +506,41 @@ function getStaffByNik_(nik){
 function isAdminNik_(nik){
   const sh = ensureSheet_(CONFIG.SHEETS.ADMINS, ['nik','name','note','created_at']);
   const lr = sh.getLastRow();
-  if(lr < 2) return false;
-  const data = sh.getRange(2,1,lr-1,1).getValues();
-  for(let i=0;i<data.length;i++){
-    if(String(data[i][0]||'').trim()===nik) return true;
+
+  // 1) Prioritas: daftar admin di sheet admin_users
+  if(lr >= 2){
+    const data = sh.getRange(2,1,lr-1,1).getValues();
+    for(let i=0;i<data.length;i++){
+      if(String(data[i][0]||'').trim()===nik) return true;
+    }
+  }
+
+  // 2) Fallback bootstrap: kalau sheet admin_users masih kosong,
+  //    gunakan CONFIG.BOOTSTRAP_ADMIN_NIKS (agar admin bisa langsung jalan).
+  const bs = (CONFIG.BOOTSTRAP_ADMIN_NIKS || []).map(x=>String(x||'').trim()).filter(Boolean);
+  for(let i=0;i<bs.length;i++){
+    if(bs[i]===nik) return true;
   }
   return false;
 }
+
+
+function bootstrapAdminRecord_(nik, staff){
+  try{
+    const sh = ensureSheet_(CONFIG.SHEETS.ADMINS, ['nik','name','note','created_at']);
+    const lr = sh.getLastRow();
+    // jika sudah ada -> skip
+    if(lr >= 2){
+      const data = sh.getRange(2,1,lr-1,1).getValues();
+      for(let i=0;i<data.length;i++){
+        if(String(data[i][0]||'').trim()===nik) return;
+      }
+    }
+    // append
+    sh.appendRow([nik, (staff && staff.name) ? staff.name : '', 'bootstrap', new Date().toISOString()]);
+  }catch(e){}
+}
+
 
 
 /* =========================
@@ -399,6 +549,8 @@ function isAdminNik_(nik){
 
 function ratingsSaveBatch_(p, body){
   const ses = requireSession_(p);
+
+  if(ses.role !== 'juri') return { ok:false, error:'Hanya juri yang boleh mengirim penilaian' };
 
   let payload = null;
   if(body && body.records) payload = body;
@@ -869,6 +1021,83 @@ function adjustmentsList_(p){
     server_ts: r[0], event_id:r[1], competition_id:r[2], team_id:r[3], value:r[4], note:r[5], by_nik:r[6], by_name:r[7]
   }));
   return { ok:true, rows };
+}
+
+
+/* =========================
+   ADMIN - STAFF / JURI CRUD
+========================= */
+
+function adminStaffList_(p){
+  requireAdmin_(p);
+  const q = String(p.q || '').trim().toLowerCase();
+  const limit = Math.max(1, Math.min(500, Number(p.limit||200)));
+
+  const sh = ensureSheet_(CONFIG.SHEETS.STAFF, null);
+  const lr = sh.getLastRow();
+  if(lr < 2) return { ok:true, rows: [] };
+
+  const values = sh.getDataRange().getValues();
+  const header = values[0].map(h=>String(h||'').trim().toLowerCase());
+
+  const idx = {
+    nik: header.indexOf('nik'),
+    name: header.indexOf('name'),
+    region: header.indexOf('region'),
+    unit: header.indexOf('unit'),
+    status: header.indexOf('status'),
+    juri: header.indexOf('juri')
+  };
+
+  const out = [];
+  for(let i=1;i<values.length;i++){
+    const r = values[i];
+    const nik = String(r[idx.nik]||'').trim();
+    if(!nik) continue;
+    const name = String(r[idx.name]||'').trim();
+    const region = String(r[idx.region]||'').trim();
+    const unit = String(r[idx.unit]||'').trim();
+    const status = String(idx.status>=0 ? (r[idx.status]||'') : '').trim();
+    const juri = String(idx.juri>=0 ? (r[idx.juri]||'') : '').toUpperCase()==='TRUE';
+
+    if(q){
+      const hay = (nik+' '+name+' '+region+' '+unit).toLowerCase();
+      if(hay.indexOf(q)===-1) continue;
+    }
+    out.push({ nik, name, region, unit, status, juri });
+    if(out.length>=limit) break;
+  }
+  return { ok:true, rows: out };
+}
+
+function adminStaffSetJuri_(p, body){
+  const ses = requireAdmin_(p);
+
+  const nik = String((p.nik || (body && body.nik) || '')).trim();
+  const juri = String((p.juri ?? (body && body.juri)) ?? '').toLowerCase();
+  const isJuri = (juri==='true' || juri==='1' || juri==='yes' || juri==='y' || juri==='on');
+
+  if(!nik) return { ok:false, error:'nik wajib' };
+
+  const sh = ensureSheet_(CONFIG.SHEETS.STAFF, null);
+  const lr = sh.getLastRow();
+  if(lr < 2) return { ok:false, error:'Sheet data_staff kosong' };
+
+  const values = sh.getDataRange().getValues();
+  const header = values[0].map(h=>String(h||'').trim().toLowerCase());
+  const idxNik = header.indexOf('nik');
+  const idxJuri = header.indexOf('juri');
+  if(idxNik<0) return { ok:false, error:'Kolom nik tidak ditemukan' };
+  if(idxJuri<0) return { ok:false, error:'Kolom juri tidak ditemukan' };
+
+  for(let i=1;i<values.length;i++){
+    const r = values[i];
+    if(String(r[idxNik]||'').trim() === nik){
+      sh.getRange(i+1, idxJuri+1).setValue(isJuri ? 'TRUE' : 'FALSE');
+      return { ok:true, nik, juri: isJuri, by: ses.nik, at: new Date().toISOString() };
+    }
+  }
+  return { ok:false, error:'NIK tidak ditemukan di data_staff' };
 }
 
 /* =========================
