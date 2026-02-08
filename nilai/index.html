@@ -1065,11 +1065,12 @@ function scheduleAutoSync(delayMs=1800){
     }
   }, delayMs);
 }
+
 function saveRating(){
   if(!oc(state.session,"token")){
     toast("Silakan login dulu", "warn");
     openLogin();
-    return;
+    return 0;
   }
 
   var dateEl = $("#eventDate");
@@ -1080,20 +1081,20 @@ function saveRating(){
   var compId = compEl ? compEl.value : "";
   var teamId = teamEl ? teamEl.value : "";
 
-  if(!date){ toast("Tanggal penilaian wajib", "warn"); return; }
-  if(!compId || !teamId){ toast("Pilih lomba dan tim dulu", "warn"); return; }
+  if(!date){ toast("Tanggal penilaian wajib", "warn"); return 0; }
+  if(!compId || !teamId){ toast("Pilih lomba dan tim dulu", "warn"); return 0; }
 
   var cfg = state.config || {};
   var comps = cfg.competitions || [];
   var comp = comps.find(function(c){ return c.id === compId; });
-  if(!comp){ toast("Config lomba tidak valid", "err"); return; }
+  if(!comp){ toast("Config lomba tidak valid", "err"); return 0; }
 
   var teams = oc(comp,"teams") || [];
   var team = teams.find(function(t){ return t.id === teamId; });
-  if(!team){ toast("Config tim tidak valid", "err"); return; }
+  if(!team){ toast("Config tim tidak valid", "err"); return 0; }
 
   var cards = $$("#criteriaContainer > div");
-  if(!cards || cards.length===0){ toast("Kriteria belum ada", "warn"); return; }
+  if(!cards || cards.length===0){ toast("Kriteria belum ada", "warn"); return 0; }
 
   var deviceId = localStorage.getItem(LS.device) || "";
   var judge = oc(state.session,"profile") || {};
@@ -1112,7 +1113,7 @@ function saveRating(){
 
     if(!(val>=1 && val<=maxStars)){
       toast("Semua kriteria harus diberi nilai", "warn");
-      return;
+      return 0;
     }
 
     var cmtEl = card.querySelector("[data-comment]");
@@ -1120,7 +1121,7 @@ function saveRating(){
 
     var crList = comp.criteria || [];
     var cr = crList.find(function(x){ return x.id === criterionId; });
-    if(!cr){ toast("Kriteria tidak valid: " + criterionId, "err"); return; }
+    if(!cr){ toast("Kriteria tidak valid: " + criterionId, "err"); return 0; }
 
     var rec = {
       event_id: cfg.event_id || "FG",
@@ -1163,6 +1164,26 @@ function saveRating(){
 
   // auto sync ringan
   scheduleAutoSync(1200);
+
+  // ✅ kembalikan jumlah record yang tersimpan
+  return records.length;
+}
+
+async function saveAndSyncNow(){
+  const before = (state.outbox || []).length;
+
+  // 1) simpan dulu (buat outbox)
+  const saved = saveRating();
+  if(!saved) return;
+
+  // 2) kalau ada tambahan pending → sync sekarang
+  const after = (state.outbox || []).length;
+  if(after > before){
+    await syncNow();
+  }else{
+    // fallback: kalau entah kenapa tidak bertambah, tetap coba sync
+    await syncNow();
+  }
 }
 
 // ✅ FIX: missing function called by syncNow()
@@ -2517,7 +2538,7 @@ function resetLocal(){
   $("#teamSelect").addEventListener("change", renderCriteria);
   $("#btnResetForm").addEventListener("click", ()=>withBtnBusy($("#btnResetForm"), "Mereset…", async()=>{ resetForm(); }));
   $("#btnSaveRating").addEventListener("click", ()=>withBtnBusy($("#btnSaveRating"), "Menyimpan…", async()=>{ saveRating(); }));
-  $("#btnSyncNow").addEventListener("click", ()=>withBtnBusy($("#btnSyncNow"), "Sync…", syncNow));
+  $("#btnSyncNow").addEventListener("click", ()=>withBtnBusy($("#btnSyncNow"), "Menyimpan & Sync…", saveAndSyncNow));
   $("#btnExport").addEventListener("click", ()=>withBtnBusy($("#btnExport"), "Mengekspor…", async()=>{ exportXlsx(); }));
   $("#btnResetLocal").addEventListener("click", ()=>withBtnBusy($("#btnResetLocal"), "Mereset…", async()=>{ resetLocal(); }));
 
