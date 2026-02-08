@@ -419,6 +419,11 @@ const state = {
   }
 };
 
+try{
+  window.State = window.state || state;     // expose
+  window.state = window.State;              // pastikan konsisten
+}catch(e){}
+
 const $ = (q,el=document)=>el.querySelector(q);
 const $$ = (q,el=document)=>Array.from(el.querySelectorAll(q));
 
@@ -3267,44 +3272,64 @@ syncNow = async function(){
   }
 
   async function requestOtpForCurrent(){
-    const s = currentScope();
-    if(!s.date || !s.compId || !s.teamId){
-      showOtpMsg('Pilih tanggal, lomba, dan tim dulu.');
+    // gunakan state yang benar (lowercase)
+    const s = (window.state || window.State || state);
+
+    if(!s || !s.session || !s.session.token){
+      toast("Session tidak ditemukan. Silakan login ulang.", "warn");
+      openLogin && openLogin();
       return;
     }
+
+    const cfg = s.config || {};
+    const date = ($("#eventDate") ? $("#eventDate").value : "") || "";
+    const compId = ($("#competitionType") ? $("#competitionType").value : "") || "";
+    const teamId = ($("#teamSelect") ? $("#teamSelect").value : "") || "";
+
+    if(!date){ toast("Tanggal penilaian wajib", "warn"); return; }
+    if(!compId){ toast("Pilih lomba dulu", "warn"); return; }
+    if(!teamId){ toast("Pilih tim dulu", "warn"); return; }
+
+    const judgeNik = (s.session.profile && s.session.profile.nik) ? s.session.profile.nik : "";
+    const judgeName = (s.session.profile && s.session.profile.name) ? s.session.profile.name : "";
+
+    // nama lomba & tim dari config (biar tampil rapi di admin)
+    const comp = (cfg.competitions || []).find(c => c.id === compId) || {};
+    const team = (comp.teams || []).find(t => t.id === teamId) || {};
+
+    // payload request OTP
     const payload = {
-      event_id: s.eventId,
-      date: s.date,
-      competition_id: s.compId,
-      team_id: s.teamId,
-      scope_key: s.scopeKey,
-      device_id: State.deviceId || ''
+      event_id: cfg.event_id || "FG",
+      date,
+      competition_id: compId,
+      competition_name: comp.name || compId,
+      team_id: teamId,
+      team_name: team.name || teamId,
+      judge_nik: judgeNik,
+      judge_name: judgeName,
+      device_id: localStorage.getItem(LS.device) || "",
+      client_ts: new Date().toISOString()
     };
 
-    const res = await api('otp.request', payload);
-    if(!res || !res.ok) throw new Error(res && res.error ? res.error : 'Gagal mengajukan OTP');
+    // panggil backend (pakai helper api/jsonp yang sudah ada)
+    try{
+      // Jika Anda sudah punya fungsi apiCall(action, params) gunakan itu:
+      // const res = await apiCall("otp.request", { token: s.session.token, ...payload });
 
-    if(res.status === 'APPROVED' && res.otp){
-      // already approved, show immediately
-      const exp = res.exp || '-';
-      showOtpReqInfo(
-        '<div class="font-semibold text-emerald-700">OTP sudah tersedia</div>'+
-        '<div class="mt-1">OTP: <b class="text-base">'+esc(res.otp)+'</b></div>'+
-        '<div class="mt-1 text-slate-600">Exp: '+esc(exp)+'</div>'+
-        '<button id="btnCopyOtpNow" class="mt-2 w-full px-3 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800">Copy OTP</button>',
-        true
-      );
-      setTimeout(()=>bindCopyOtp(res.otp), 0);
-      try{ document.getElementById('otpInput').value = res.otp; }catch(e){}
-      return;
+      // Versi aman: pakai requestJsonp yang biasanya sudah ada di proyek FG Anda
+      const res = await callApi("otp.request", Object.assign({ token: s.session.token }, payload));
+
+      if(res && res.ok){
+        toast("Permintaan OTP dikirim. Menunggu persetujuan Admin.", "ok");
+        // optional: refresh status otp modal
+        if(typeof refreshOtpStatus === "function") refreshOtpStatus();
+        return;
+      }
+
+      toast((res && res.message) ? res.message : "Gagal mengajukan OTP", "err");
+    }catch(err){
+      toast(err?.message || String(err), "err");
     }
-
-    showOtpReqInfo(
-      '<div class="font-semibold">Permintaan OTP terkirim</div>'+
-      '<div class="mt-1 text-slate-600">Admin akan melihat permintaan Anda di Tab Admin, lalu menekan Setujui untuk membuat OTP.</div>'+
-      '<div class="mt-2">Klik <b>Cek OTP Saya</b> untuk melihat OTP jika sudah disetujui.</div>',
-      true
-    );
   }
 
   function bindCopyOtp(otp){
