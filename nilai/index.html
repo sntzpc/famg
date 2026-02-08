@@ -1065,12 +1065,11 @@ function scheduleAutoSync(delayMs=1800){
     }
   }, delayMs);
 }
-
 function saveRating(){
   if(!oc(state.session,"token")){
     toast("Silakan login dulu", "warn");
     openLogin();
-    return 0;
+    return;
   }
 
   var dateEl = $("#eventDate");
@@ -1081,20 +1080,20 @@ function saveRating(){
   var compId = compEl ? compEl.value : "";
   var teamId = teamEl ? teamEl.value : "";
 
-  if(!date){ toast("Tanggal penilaian wajib", "warn"); return 0; }
-  if(!compId || !teamId){ toast("Pilih lomba dan tim dulu", "warn"); return 0; }
+  if(!date){ toast("Tanggal penilaian wajib", "warn"); return; }
+  if(!compId || !teamId){ toast("Pilih lomba dan tim dulu", "warn"); return; }
 
   var cfg = state.config || {};
   var comps = cfg.competitions || [];
   var comp = comps.find(function(c){ return c.id === compId; });
-  if(!comp){ toast("Config lomba tidak valid", "err"); return 0; }
+  if(!comp){ toast("Config lomba tidak valid", "err"); return; }
 
   var teams = oc(comp,"teams") || [];
   var team = teams.find(function(t){ return t.id === teamId; });
-  if(!team){ toast("Config tim tidak valid", "err"); return 0; }
+  if(!team){ toast("Config tim tidak valid", "err"); return; }
 
   var cards = $$("#criteriaContainer > div");
-  if(!cards || cards.length===0){ toast("Kriteria belum ada", "warn"); return 0; }
+  if(!cards || cards.length===0){ toast("Kriteria belum ada", "warn"); return; }
 
   var deviceId = localStorage.getItem(LS.device) || "";
   var judge = oc(state.session,"profile") || {};
@@ -1113,7 +1112,7 @@ function saveRating(){
 
     if(!(val>=1 && val<=maxStars)){
       toast("Semua kriteria harus diberi nilai", "warn");
-      return 0;
+      return;
     }
 
     var cmtEl = card.querySelector("[data-comment]");
@@ -1121,7 +1120,7 @@ function saveRating(){
 
     var crList = comp.criteria || [];
     var cr = crList.find(function(x){ return x.id === criterionId; });
-    if(!cr){ toast("Kriteria tidak valid: " + criterionId, "err"); return 0; }
+    if(!cr){ toast("Kriteria tidak valid: " + criterionId, "err"); return; }
 
     var rec = {
       event_id: cfg.event_id || "FG",
@@ -1164,26 +1163,6 @@ function saveRating(){
 
   // auto sync ringan
   scheduleAutoSync(1200);
-
-  // ✅ kembalikan jumlah record yang tersimpan
-  return records.length;
-}
-
-async function saveAndSyncNow(){
-  const before = (state.outbox || []).length;
-
-  // 1) simpan dulu (buat outbox)
-  const saved = saveRating();
-  if(!saved) return;
-
-  // 2) kalau ada tambahan pending → sync sekarang
-  const after = (state.outbox || []).length;
-  if(after > before){
-    await syncNow();
-  }else{
-    // fallback: kalau entah kenapa tidak bertambah, tetap coba sync
-    await syncNow();
-  }
 }
 
 // ✅ FIX: missing function called by syncNow()
@@ -2507,9 +2486,498 @@ function resetLocal(){
   toast("Local reset selesai", "ok");
 }
 
+
+
+/* =========================================================
+   PATCH v6 — One-time rating + OTP unlock + UX improvements
+========================================================= */
+
+// ---- Lock storage keys (separate from saveLS agar patch minim ganggu) ----
+const LS_LOCKS_KEY = 'fg_eval_v5_locks';
+const LS_UNLOCK_KEY = 'fg_eval_v5_unlock';
+
+function patchLoadLocks(){
+  try{
+    state.locks = JSON.parse(localStorage.getItem(LS_LOCKS_KEY) || '{}') || {};
+  }catch(e){ state.locks = {}; }
+  try{
+    state.unlock = JSON.parse(localStorage.getItem(LS_UNLOCK_KEY) || 'null');
+  }catch(e){ state.unlock = null; }
+}
+function patchSaveLocks(){
+  try{ localStorage.setItem(LS_LOCKS_KEY, JSON.stringify(state.locks || {})); }catch(e){}
+  try{ localStorage.setItem(LS_UNLOCK_KEY, JSON.stringify(state.unlock || null)); }catch(e){}
+}
+
+function scopeKey(compId, teamId){
+  var eventId = oc(state.config, 'event_id') || 'FG';
+  var date = ($('#eventDate') && $('#eventDate').value) ? $('#eventDate').value : new Date().toISOString().slice(0,10);
+  var prof = oc(state.session, 'profile');
+  var judgeNik = (prof && prof.nik) ? prof.nik : 'UNKNOWN';
+  return [eventId, date, compId, teamId, judgeNik].join('|');
+}
+
+function isScopeLocked(sk){
+  return !!(state.locks && state.locks[sk]);
+}
+function lockScope(sk){
+  state.locks = state.locks || {};
+  state.locks[sk] = true;
+  patchSaveLocks();
+}
+function clearUnlockIfExpired(){
+  if(!state.unlock) return;
+  try{
+    var exp = new Date(state.unlock.exp || 0).getTime();
+    if(!exp || exp < Date.now()){
+      state.unlock = null;
+      patchSaveLocks();
+    }
+  }catch(e){
+    state.unlock = null;
+    patchSaveLocks();
+  }
+}
+function isScopeUnlocked(sk){
+  clearUnlockIfExpired();
+  return !!(state.unlock && state.unlock.scope_key === sk);
+}
+
+function getRatedTeamsSet(compId){
+  var set = new Set();
+  var cfg = state.config || {};
+  var comp = (cfg.competitions||[]).find(function(c){ return c.id===compId; });
+  var teams = oc(comp,'teams') || [];
+  teams.forEach(function(t){
+    var sk = scopeKey(compId, t.id);
+    if(isScopeLocked(sk)) set.add(t.id);
+  });
+  return set;
+}
+
+function ensureRateUIAddons(){
+  // hint + checkbox under team selector
+  var teamSel = document.getElementById('teamSelect');
+  if(teamSel && !document.getElementById('ratedTools')){
+    teamSel.insertAdjacentHTML('afterend',
+      '<div id="ratedTools" class="mt-2 space-y-2">'+
+        '<label class="flex items-center gap-2 text-xs text-slate-600 select-none">'+
+          '<input id="showRatedTeams" type="checkbox" class="h-4 w-4" />'+
+          '<span>Tampilkan tim yang sudah dinilai (terkunci)</span>'+
+        '</label>'+
+        '<div id="ratedHint" class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700">'+
+          '<div class="font-semibold">Status penilaian</div>'+
+          '<div class="mt-1 text-slate-600">Pilih lomba untuk melihat tim yang sudah Anda nilai.</div>'+
+        '</div>'+
+      '</div>'
+    );
+  }
+
+  // tombol OTP unlock di kartu Aksi
+  var lockBadge = document.getElementById('lockBadge');
+  if(lockBadge && !document.getElementById('btnUnlockOtp')){
+    lockBadge.insertAdjacentHTML('afterend',
+      '<button id="btnUnlockOtp" class="hidden mt-2 w-full px-4 py-3 rounded-2xl bg-amber-500 text-white hover:bg-amber-600 shadow-sm">'+
+      '<i class="fa-solid fa-key mr-2"></i>Masukkan OTP untuk ubah</button>'
+    );
+  }
+
+  // modal OTP
+  if(!document.getElementById('otpModal')){
+    document.body.insertAdjacentHTML('beforeend',
+      '<div id="otpModal" class="fixed inset-0 z-50 hidden">'+
+        '<div class="absolute inset-0 bg-black/40"></div>'+
+        '<div class="absolute inset-0 grid place-items-center p-4">'+
+          '<div class="w-full max-w-md p-5 rounded-3xl bg-white shadow-xl">'+
+            '<div class="flex items-center justify-between">'+
+              '<div><div class="font-bold text-lg">OTP Admin</div><div id="otpScopeLabel" class="text-xs text-slate-500 mt-1">-</div></div>'+
+              '<button id="btnCloseOtp" class="h-10 w-10 rounded-2xl bg-slate-100 hover:bg-slate-200 grid place-items-center"><i class="fa-solid fa-xmark"></i></button>'+
+            '</div>'+
+            '<div class="mt-4">'+
+              '<label class="block text-sm text-slate-600 mb-1">Masukkan OTP 6 digit</label>'+
+              '<input id="otpInput" inputmode="numeric" maxlength="6" class="w-full px-3 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900/20" placeholder="contoh: 123456" />'+
+              '<div id="otpMsg" class="hidden mt-2 text-sm text-rose-700"></div>'+
+              '<button id="btnVerifyOtp" class="w-full mt-3 px-4 py-3 rounded-2xl bg-slate-900 text-white hover:bg-slate-800">'+
+                '<span class="inline-flex items-center justify-center gap-2">'+
+                  '<span id="otpSpinner" class="hidden w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>'+
+                  '<i id="otpIcon" class="fa-solid fa-check"></i>'+
+                  '<span id="otpBtnText">Verifikasi OTP</span>'+
+                '</span>'+
+              '</button>'+
+              '<div class="mt-3 text-xs text-slate-500">OTP hanya untuk membuka <b>1 tim</b> dan akan habis setelah dipakai untuk sync perubahan.</div>'+
+            '</div>'+
+          '</div>'+
+        '</div>'+
+      '</div>'
+    );
+  }
+
+  // bind sekali
+  var btnUnlock = document.getElementById('btnUnlockOtp');
+  if(btnUnlock && !btnUnlock.dataset._bound){
+    btnUnlock.dataset._bound = '1';
+    btnUnlock.addEventListener('click', function(){
+      openOtpModalForCurrent();
+    });
+  }
+  var btnCloseOtp = document.getElementById('btnCloseOtp');
+  if(btnCloseOtp && !btnCloseOtp.dataset._bound){
+    btnCloseOtp.dataset._bound='1';
+    btnCloseOtp.addEventListener('click', closeOtpModal);
+  }
+  var btnVerifyOtp = document.getElementById('btnVerifyOtp');
+  if(btnVerifyOtp && !btnVerifyOtp.dataset._bound){
+    btnVerifyOtp.dataset._bound='1';
+    btnVerifyOtp.addEventListener('click', verifyOtp);
+  }
+}
+
+function updateRatedHint(){
+  var hint = document.getElementById('ratedHint');
+  if(!hint) return;
+  var compId = document.getElementById('competitionType').value;
+  if(!compId){
+    hint.innerHTML = '<div class="font-semibold">Status penilaian</div><div class="mt-1 text-slate-600">Pilih lomba untuk melihat tim yang sudah Anda nilai.</div>';
+    return;
+  }
+  var cfg = state.config || {};
+  var comp = (cfg.competitions||[]).find(function(c){ return c.id===compId; });
+  var teams = oc(comp,'teams') || [];
+  var done = getRatedTeamsSet(compId);
+  var doneNames = teams.filter(t=>done.has(t.id)).map(t=>t.name||t.id);
+  var left = teams.length - done.size;
+  hint.innerHTML = '<div class="font-semibold">Status penilaian</div>'+
+    '<div class="mt-1 text-slate-600">Sudah dinilai: <b>'+ done.size +'</b> tim • Belum: <b>'+ left +'</b></div>'+
+    (doneNames.length ? '<div class="mt-2 text-slate-700">✅ '+ doneNames.map(esc).join(', ') +'</div>' : '<div class="mt-2 text-slate-500">Belum ada tim yang dinilai pada lomba ini.</div>');
+}
+
+// ---- Override updateTeams: tandai tim yang sudah dinilai ----
+const _origUpdateTeams = updateTeams;
+updateTeams = function(){
+  const cfg = state.config || { competitions:[] };
+  const compId = document.getElementById('competitionType').value;
+  state.ui.competitionId = compId;
+  const comp = (cfg.competitions||[]).find(c=>c.id===compId);
+  const teamSel = document.getElementById('teamSelect');
+  const teams = oc(comp,'teams') || [];
+  const showRated = !!(document.getElementById('showRatedTeams') && document.getElementById('showRatedTeams').checked);
+  const done = getRatedTeamsSet(compId);
+
+  teamSel.innerHTML = '<option value="">-- pilih tim --</option>' + teams.map(function(t){
+    var isDone = done.has(t.id);
+    var label = esc(t.name||t.id) + (isDone ? '  ✅ (sudah dinilai)' : '');
+    var dis = (isDone && !showRated) ? 'disabled' : '';
+    return '<option value="'+esc(t.id)+'" '+dis+'>'+label+'</option>';
+  }).join('');
+
+  teamSel.value = '';
+  state.ui.teamId = '';
+  updateRatedHint();
+  renderCriteria();
+};
+
+function applyLockUIForCurrent(){
+  var compId = document.getElementById('competitionType').value;
+  var teamId = document.getElementById('teamSelect').value;
+  var lockBadge = document.getElementById('lockBadge');
+  var btnUnlock = document.getElementById('btnUnlockOtp');
+  var btnSave = document.getElementById('btnSyncNow');
+
+  if(!compId || !teamId){
+    if(lockBadge) lockBadge.classList.add('hidden');
+    if(btnUnlock) btnUnlock.classList.add('hidden');
+    if(btnSave) btnSave.disabled = false;
+    return;
+  }
+
+  var sk = scopeKey(compId, teamId);
+  var locked = isScopeLocked(sk) && !isScopeUnlocked(sk);
+
+  if(lockBadge){
+    lockBadge.classList.toggle('hidden', !locked);
+    lockBadge.innerHTML = locked ? '<i class="fa-solid fa-lock"></i> Terkunci' : '<i class="fa-solid fa-lock-open"></i> Terbuka';
+  }
+  if(btnUnlock){
+    btnUnlock.classList.toggle('hidden', !locked);
+  }
+
+  // disable form input when locked
+  var box = document.getElementById('criteriaContainer');
+  if(box){
+    box.classList.toggle('opacity-60', locked);
+    box.querySelectorAll('input,button,textarea').forEach(function(el){
+      if(el && el.hasAttribute('data-comment')) el.disabled = locked;
+    });
+    box.querySelectorAll('.star').forEach(function(el){
+      if(!el) return;
+      el.style.pointerEvents = locked ? 'none' : 'auto';
+    });
+  }
+
+  if(btnSave){
+    btnSave.disabled = locked;
+    btnSave.classList.toggle('opacity-70', locked);
+    btnSave.classList.toggle('cursor-not-allowed', locked);
+  }
+}
+
+// ---- Override renderCriteria: apply lock state ----
+const _origRenderCriteria = renderCriteria;
+renderCriteria = function(){
+  _origRenderCriteria();
+  applyLockUIForCurrent();
+};
+
+// ---- OTP modal flow ----
+function openOtpModalForCurrent(){
+  var compId = document.getElementById('competitionType').value;
+  var teamId = document.getElementById('teamSelect').value;
+  if(!compId || !teamId){ toast('Pilih lomba & tim dulu', 'warn'); return; }
+  var sk = scopeKey(compId, teamId);
+  document.getElementById('otpScopeLabel').textContent = 'Scope: ' + sk;
+  document.getElementById('otpInput').value = '';
+  document.getElementById('otpMsg').classList.add('hidden');
+  document.getElementById('otpModal').classList.remove('hidden');
+}
+function closeOtpModal(){
+  var m = document.getElementById('otpModal');
+  if(m) m.classList.add('hidden');
+}
+function showOtpMsg(msg){
+  var el = document.getElementById('otpMsg');
+  if(!el) return;
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+async function verifyOtp(){
+  var compId = document.getElementById('competitionType').value;
+  var teamId = document.getElementById('teamSelect').value;
+  var sk = scopeKey(compId, teamId);
+  var otp = (document.getElementById('otpInput').value||'').trim();
+  if(!otp){ showOtpMsg('OTP wajib diisi'); return; }
+
+  var btn = document.getElementById('btnVerifyOtp');
+  try{ document.getElementById('otpSpinner').classList.remove('hidden'); document.getElementById('otpIcon').classList.add('hidden'); document.getElementById('otpBtnText').textContent='Memverifikasi...'; }catch(e){}
+  btn.disabled = true;
+
+  try{
+    var res = await apiJsonp('otp.verify', { otp: otp, scope_key: sk });
+    state.unlock = { scope_key: sk, otp: otp, exp: res.exp || new Date(Date.now()+10*60*1000).toISOString() };
+    patchSaveLocks();
+    closeOtpModal();
+    toast('OTP valid. Form terbuka untuk ubah.', 'ok');
+    applyLockUIForCurrent();
+  }catch(err){
+    showOtpMsg(err.message || 'OTP tidak valid');
+  }finally{
+    try{ document.getElementById('otpSpinner').classList.add('hidden'); document.getElementById('otpIcon').classList.remove('hidden'); document.getElementById('otpBtnText').textContent='Verifikasi OTP'; }catch(e){}
+    btn.disabled = false;
+  }
+}
+
+// ---- Override saveRating: lock once + clear form after save ----
+saveRating = function(){
+  if(!oc(state.session,'token')){ toast('Silakan login dulu', 'warn'); openLogin(); return 0; }
+
+  var dateEl = document.getElementById('eventDate');
+  var compEl = document.getElementById('competitionType');
+  var teamEl = document.getElementById('teamSelect');
+
+  var date = dateEl ? dateEl.value : '';
+  var compId = compEl ? compEl.value : '';
+  var teamId = teamEl ? teamEl.value : '';
+
+  if(!date){ toast('Tanggal penilaian wajib', 'warn'); return 0; }
+  if(!compId || !teamId){ toast('Pilih lomba dan tim dulu', 'warn'); return 0; }
+
+  var sk = scopeKey(compId, teamId);
+  if(isScopeLocked(sk) && !isScopeUnlocked(sk)){
+    toast('Penilaian tim ini sudah terkunci. Minta OTP admin untuk ubah.', 'warn');
+    applyLockUIForCurrent();
+    return 0;
+  }
+
+  var cfg = state.config || {};
+  var comp = (cfg.competitions||[]).find(function(c){ return c.id===compId; });
+  if(!comp){ toast('Config lomba tidak valid', 'err'); return 0; }
+  var team = (oc(comp,'teams')||[]).find(function(t){ return t.id===teamId; });
+  if(!team){ toast('Config tim tidak valid', 'err'); return 0; }
+
+  var cards = $$('#criteriaContainer > div');
+  if(!cards || !cards.length){ toast('Kriteria belum ada', 'warn'); return 0; }
+
+  var deviceId = localStorage.getItem(LS.device) || '';
+  var judge = oc(state.session,'profile') || {};
+  var maxStars = Number(cfg.max_stars || 5) || 5;
+
+  var records = [];
+  for(var i=0;i<cards.length;i++){
+    var card = cards[i];
+    var criterionId = card.dataset ? card.dataset.criterionId : '';
+    var valEl = card.querySelector('[data-val]');
+    var val = Number(valEl ? valEl.textContent : 0);
+    if(!(val>=1 && val<=maxStars)){ toast('Semua kriteria harus diberi nilai', 'warn'); return 0; }
+
+    var cmtEl = card.querySelector('[data-comment]');
+    var comment = cmtEl ? String(cmtEl.value||'').trim() : '';
+
+    var cr = (comp.criteria||[]).find(function(x){ return x.id===criterionId; });
+    if(!cr){ toast('Kriteria tidak valid: ' + criterionId, 'err'); return 0; }
+
+    var rec = {
+      event_id: cfg.event_id || 'FG',
+      date: date,
+      judge_nik: judge.nik || 'UNKNOWN',
+      judge_name: judge.name || '',
+      competition_id: comp.id,
+      competition_name: comp.name || comp.id,
+      category: comp.category || '',
+      team_id: team.id,
+      team_name: team.name || team.id,
+      criterion_id: cr.id,
+      criterion_name: cr.name || cr.id,
+      weight: Number(cr.weight||0) || 0,
+      rating: val,
+      comment: comment,
+      device_id: deviceId,
+      client_id: uid(),
+      client_ts: new Date().toISOString()
+    };
+
+    rec.dedupe_key = baseKey(compId, teamId, criterionId);
+
+    var existing = state.ratings.find(function(r){ return r.dedupe_key===rec.dedupe_key; });
+    if(existing){
+      // jika unlocked, boleh update; jika tidak unlocked, mestinya sudah tertahan di awal
+      rec.client_id = existing.client_id;
+      rec.client_ts = new Date().toISOString();
+    }
+
+    upsertLocal(rec);
+    addToOutbox(rec);
+    records.push(rec);
+  }
+
+  // Lock setelah submit (jujur/sekali)
+  lockScope(sk);
+
+  saveLS();
+  refreshCounters();
+  toast('Penilaian tersimpan (terkunci) • siap sync', 'ok');
+  renderResults();
+  scheduleAutoSync(1200);
+
+  // Setelah simpan: bersihkan tim (lomba tetap)
+  try{ document.getElementById('teamSelect').value=''; }catch(e){}
+  state.ui.teamId = '';
+  updateRatedHint();
+  renderCriteria();
+
+  return records.length;
+};
+
+async function saveAndSyncNow(){
+  var saved = saveRating();
+  if(!saved) return;
+  await syncNow();
+}
+
+// ---- Override syncNow: group by scope (otp per scope) ----
+syncNow = async function(){
+  if(syncNow._busy){ toast('Sync sedang berjalan…', 'warn'); return; }
+  syncNow._busy = true;
+
+  try{
+    if(!oc(state.session,'token')){ toast('Silakan login dulu', 'warn'); openLogin(); return; }
+    if(!state.outbox || state.outbox.length===0){ toast('Tidak ada data pending', 'ok'); return; }
+    if(!navigator.onLine){ toast('Anda sedang offline. Data tetap aman.', 'warn'); return; }
+
+    var okCount=0, failCount=0;
+
+    while(state.outbox.length){
+      var first = state.outbox[0];
+      var sk = [first.event_id, first.date, first.competition_id, first.team_id, first.judge_nik].join('|');
+
+      // ambil batch hanya untuk scope ini (biar OTP tidak nyasar)
+      var rawBatch = state.outbox.filter(function(r){
+        var s = [r.event_id, r.date, r.competition_id, r.team_id, r.judge_nik].join('|');
+        return s===sk;
+      }).slice(0, 20);
+
+      var batch = rawBatch.map(minifyRatingRecord);
+
+      var payload = { records: batch };
+      if(isScopeUnlocked(sk)){
+        payload.otp = state.unlock.otp;
+        payload.scope_key = sk;
+      }
+
+      try{
+        var res = await apiJsonp('ratings.saveBatch', {}, payload);
+        okCount += (res && res.saved) ? res.saved : batch.length;
+
+        // remove synced from outbox
+        var ids = new Set(rawBatch.map(r=>r.client_id));
+        state.outbox = state.outbox.filter(r=>!ids.has(r.client_id));
+        saveLS();
+        refreshCounters();
+
+        // jika otp dipakai, tutup kembali
+        if(res && res.results && res.results.some(x=>x.otp_used)){
+          state.unlock = null;
+          patchSaveLocks();
+          toast('Perubahan tersimpan (OTP terpakai) • terkunci kembali', 'ok');
+          applyLockUIForCurrent();
+        }
+
+      }catch(err){
+        var msg = String(oc(err,'message') || err || 'sync failed');
+        if(msg.indexOf('LOCKED:')>=0){
+          toast('Terkunci: perlu OTP admin untuk ubah.', 'warn');
+          // arahkan ke modal otp sesuai scope batch
+          // set UI ke tim terkait agar user jelas
+          try{
+            document.getElementById('competitionType').value = first.competition_id;
+            updateTeams();
+            // tampilkan tim meski done
+            var cb = document.getElementById('showRatedTeams');
+            if(cb) cb.checked = true;
+            updateTeams();
+            document.getElementById('teamSelect').value = first.team_id;
+            renderCriteria();
+          }catch(e){}
+          openOtpModalForCurrent();
+          return;
+        }
+
+        // gagal biasa -> pindahkan 1 record ke failed
+        var one = state.outbox[0];
+        failCount += 1;
+        state.failed.push({ id: uid(), at: new Date().toISOString(), error: msg, records: [one] });
+        state.outbox = state.outbox.filter(r=>r.client_id!==one.client_id);
+        saveLS();
+        refreshCounters();
+      }
+    }
+
+    if(okCount && !failCount) toast('✅ Sync sukses: ' + okCount + ' record', 'ok');
+    else if(okCount && failCount) toast('⚠️ Sync sebagian: ' + okCount + ' sukses, ' + failCount + ' gagal', 'warn');
+    else if(failCount) toast('❌ Sync gagal (' + failCount + ')', 'err');
+
+    renderFailed();
+
+  }finally{
+    syncNow._busy = false;
+  }
+};
+
+
+
 // ===== Boot =====
 (function init(){
   loadLS();
+  patchLoadLocks();
+  ensureRateUIAddons();
 
   // set default date today
   const today = new Date().toISOString().slice(0,10);
@@ -2534,8 +3002,10 @@ function resetLocal(){
     btn.addEventListener("click", ()=> setTab(btn.dataset.tab));
   });
 
-  $("#competitionType").addEventListener("change", updateTeams);
+  $("#competitionType").addEventListener("change", ()=>{ updateTeams(); updateRatedHint(); });
   $("#teamSelect").addEventListener("change", renderCriteria);
+  const _sr = document.getElementById("showRatedTeams");
+  if(_sr){ _sr.addEventListener("change", ()=> updateTeams()); }
   $("#btnResetForm").addEventListener("click", ()=>withBtnBusy($("#btnResetForm"), "Mereset…", async()=>{ resetForm(); }));
   $("#btnSaveRating").addEventListener("click", ()=>withBtnBusy($("#btnSaveRating"), "Menyimpan…", async()=>{ saveRating(); }));
   $("#btnSyncNow").addEventListener("click", ()=>withBtnBusy($("#btnSyncNow"), "Menyimpan & Sync…", saveAndSyncNow));

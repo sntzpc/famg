@@ -7,7 +7,8 @@ const CONFIG = {
     SESSIONS: 'sessions',
     RATINGS: 'ratings',
     ADJUST: 'adjustments',
-    LOG: 'api_log'
+    LOG: 'api_log',
+    OTP: 'otp'
   },
   SESSION_HOURS: 24,
   MAX_JSONP_CHUNK: 60 // max records per request untuk JSONP
@@ -57,6 +58,8 @@ function route_(action, p, body){
     case 'admin.saveConfigChunk': return adminSaveConfigChunk_(p, body);
     case 'admin.listRatings': return adminListRatings_(p);
     case 'ratings.saveBatch': return ratingsSaveBatch_(p, body);
+    case 'admin.createOtp': return adminCreateOtp_(p, body);
+    case 'otp.verify': return otpVerify_(p, body);
     case 'adjustments.save': return adjustmentsSave_(p, body);
     case 'adjustments.list': return adjustmentsList_(p);
     default:
@@ -403,6 +406,11 @@ function ratingsSaveBatch_(p, body){
   if(!Array.isArray(records) || records.length===0) return { ok:false, error:'records kosong' };
   if(records.length > CONFIG.MAX_JSONP_CHUNK) return { ok:false, error:'Terlalu banyak records. Maks ' + CONFIG.MAX_JSONP_CHUNK };
 
+  // OTP meta (untuk unlock edit)
+  const metaOtp = String((payload && (payload.otp||payload.OTP)) || p.otp || '').trim();
+  const metaScope = String((payload && (payload.scope_key||payload.scopeKey)) || p.scope_key || '').trim();
+  let otpConsumed = false;
+
   const sh = ensureSheet_(CONFIG.SHEETS.RATINGS, [
     'server_ts','event_id','date','judge_nik','judge_name','competition_id','competition_name','category',
     'team_id','team_name','criterion_id','criterion_name','weight','rating','comment',
@@ -415,13 +423,26 @@ function ratingsSaveBatch_(p, body){
     const k = r.dedupe_key;
     const foundRow = findRowByDedupe_(sh, k);
     if(foundRow){
-      // update existing
+      // ✅ LOCK: sudah pernah tersimpan → hanya boleh diubah dengan OTP admin (scope: event|date|competition|team|judge)
+      const scope_key = [r.event_id, r.date, r.competition_id, r.team_id, r.judge_nik].join('|');
+
+      if(!metaOtp || !metaScope || metaScope !== scope_key){
+        throw new Error('LOCKED: Penilaian sudah tersimpan. OTP admin diperlukan untuk ubah. | scope_key=' + scope_key);
+      }
+
+      if(!otpConsumed){
+        const okOtp = consumeOtp_(metaOtp, ses.nik, scope_key);
+        if(!okOtp) throw new Error('LOCKED: OTP tidak valid / expired / sudah dipakai | scope_key=' + scope_key);
+        otpConsumed = true;
+      }
+
+      // update existing (OTP valid)
       sh.getRange(foundRow, 1, 1, 20).setValues([[
         new Date(), r.event_id, r.date, r.judge_nik, r.judge_name, r.competition_id, r.competition_name, r.category,
         r.team_id, r.team_name, r.criterion_id, r.criterion_name, r.weight, r.rating, r.comment,
         r.device_id, r.client_id, r.client_ts, r.dedupe_key, new Date()
       ]]);
-      results.push({ client_id:r.client_id, status:'updated', dedupe_key:k });
+      results.push({ client_id:r.client_id, status:'updated', dedupe_key:k, scope_key: scope_key, otp_used:true });
     }else{
       sh.appendRow([
         new Date(), r.event_id, r.date, r.judge_nik, r.judge_name, r.competition_id, r.competition_name, r.category,
@@ -470,6 +491,104 @@ function findRowByDedupe_(sh, key){
   if(!cell) return 0;
   return cell.getRow();
 }
+
+
+/* =========================
+   OTP (Unlock Edit)
+========================= */
+
+function otpSheet_(){
+  return ensureSheet_(CONFIG.SHEETS.OTP, ['created_at','otp','admin_nik','judge_nik','scope_key','exp_iso','used_at','used_by']);
+}
+
+function adminCreateOtp_(p, body){
+  const ses = requireAdmin_(p);
+
+  const judge_nik = String((p.judge_nik || (body && body.judge_nik) || '')).trim();
+  const scope_key = String((p.scope_key || (body && body.scope_key) || '')).trim();
+  const ttl_min = Number(p.ttl_min || (body && body.ttl_min) || 10) || 10;
+
+  if(!judge_nik) return { ok:false, error:'judge_nik wajib' };
+  if(!scope_key) return { ok:false, error:'scope_key wajib' };
+
+  const otp = String(Math.floor(100000 + Math.random()*900000));
+  const exp = new Date(Date.now() + max_(3, min_(60, ttl_min))*60*1000);
+
+  const sh = otpSheet_();
+  sh.appendRow([new Date().toISOString(), otp, ses.nik, judge_nik, scope_key, exp.toISOString(), '', '']);
+
+  return { ok:true, otp, exp: exp.toISOString(), judge_nik, scope_key };
+}
+
+function otpVerify_(p, body){
+  const ses = requireSession_(p);
+  const otp = String((p.otp || (body && body.otp) || '')).trim();
+  const scope_key = String((p.scope_key || (body && body.scope_key) || '')).trim();
+  if(!otp || !scope_key) return { ok:false, error:'otp dan scope_key wajib' };
+
+  const v = findValidOtp_(otp, ses.nik, scope_key);
+  if(!v) return { ok:false, error:'OTP tidak valid / expired / sudah dipakai' };
+  return { ok:true, exp: v.exp_iso };
+}
+
+function consumeOtp_(otp, judge_nik, scope_key){
+  const sh = otpSheet_();
+  const lr = sh.getLastRow();
+  if(lr < 2) return false;
+
+  const data = sh.getRange(2,1,lr-1,8).getValues();
+  const now = Date.now();
+
+  for(let i=data.length-1;i>=0;i--){
+    const row = data[i];
+    const rowOtp = String(row[1]||'').trim();
+    const rowJudge = String(row[3]||'').trim();
+    const rowScope = String(row[4]||'').trim();
+    const expIso = String(row[5]||'').trim();
+    const usedAt = String(row[6]||'').trim();
+
+    if(rowOtp !== otp) continue;
+    if(rowJudge !== judge_nik) continue;
+    if(rowScope !== scope_key) continue;
+    if(usedAt) return false;
+    if(expIso && new Date(expIso).getTime() < now) return false;
+
+    sh.getRange(i+2,7,1,2).setValues([[new Date().toISOString(), judge_nik]]);
+    return true;
+  }
+  return false;
+}
+
+function findValidOtp_(otp, judge_nik, scope_key){
+  const sh = otpSheet_();
+  const lr = sh.getLastRow();
+  if(lr < 2) return null;
+
+  const data = sh.getRange(2,1,lr-1,8).getValues();
+  const now = Date.now();
+
+  for(let i=data.length-1;i>=0;i--){
+    const row = data[i];
+    const rowOtp = String(row[1]||'').trim();
+    const rowJudge = String(row[3]||'').trim();
+    const rowScope = String(row[4]||'').trim();
+    const expIso = String(row[5]||'').trim();
+    const usedAt = String(row[6]||'').trim();
+
+    if(rowOtp !== otp) continue;
+    if(rowJudge !== judge_nik) continue;
+    if(rowScope !== scope_key) continue;
+    if(usedAt) return null;
+    if(expIso && new Date(expIso).getTime() < now) return null;
+
+    return { exp_iso: expIso };
+  }
+  return null;
+}
+
+function min_(a,b){ return a<b?a:b; }
+function max_(a,b){ return a>b?a:b; }
+
 
 /* =========================
    ADJUSTMENTS
