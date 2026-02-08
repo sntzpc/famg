@@ -222,6 +222,21 @@
     <!-- Tab: Admin -->
     <section id="tab-admin" class="tabpane hidden">
       <div class="grid lg:grid-cols-3 gap-4">
+
+        <!-- Panel: Permintaan OTP (Unlock Penilaian) -->
+        <div id="otpReqAdminPanel" class="lg:col-span-3 p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <div class="font-semibold">Permintaan OTP (Unlock Penilaian)</div>
+              <div class="text-xs text-slate-600 mt-1">Juri mengajukan OTP dari modal OTP. Admin menekan <b>Setujui</b>, lalu OTP bisa dicopy dan akan bisa diambil juri lewat tombol <b>Cek OTP Saya</b>.</div>
+            </div>
+            <button id="btnOtpReqReload" class="px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200">
+              <i class="fa-solid fa-rotate mr-2"></i>Refresh
+            </button>
+          </div>
+          <div id="otpReqAdminList" class="mt-4 space-y-3"></div>
+        </div>
+
         <div class="lg:col-span-1">
           <div class="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
             <div class="font-semibold mb-2">Pengaturan Aplikasi</div>
@@ -3518,6 +3533,7 @@ syncNow = async function(){
       _origSetTabV7(tab);
       if(tab === 'admin' && isAdminUser()){
         ensureAdminOtpPanel();
+        bindAdminOtpPanelAlways();
         adminLoadOtpRequests().catch(()=>{});
       }
       if(tab === 'recap'){
@@ -3527,10 +3543,22 @@ syncNow = async function(){
     setTab._patched_v7 = true;
   }
 
+  
+  function bindAdminOtpPanelAlways(){
+    try{
+      if(!isAdminUser()) return;
+      const btn = document.getElementById('btnOtpReqReload');
+      if(btn && !btn.dataset._bound){
+        btn.dataset._bound='1';
+        btn.addEventListener('click', ()=>withBtnBusy(btn, 'Memuat…', adminLoadOtpRequests));
+      }
+    }catch(e){}
+  }
+
   // ---- Boot hooks ----
   try{
     ensureOtpRequestUI();
-    if(isAdminUser()) ensureAdminOtpPanel();
+    if(isAdminUser()) { ensureAdminOtpPanel(); bindAdminOtpPanelAlways(); adminLoadOtpRequests().catch(()=>{}); }
   }catch(e){}
 
 })();
