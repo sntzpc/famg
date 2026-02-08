@@ -3317,7 +3317,7 @@ syncNow = async function(){
       // const res = await apiCall("otp.request", { token: s.session.token, ...payload });
 
       // Versi aman: pakai requestJsonp yang biasanya sudah ada di proyek FG Anda
-      const res = await callApi("otp.request", Object.assign({ token: s.session.token }, payload));
+      const res = await apiJsonp("otp.request", Object.assign({ token: s.session.token }, payload));
 
       if(res && res.ok){
         toast("Permintaan OTP dikirim. Menunggu persetujuan Admin.", "ok");
