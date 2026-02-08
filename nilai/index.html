@@ -3085,6 +3085,456 @@ syncNow = async function(){
     toast("Rekap diperbarui (local + adjustment)", "ok");
   });
 
+
+
+/* =========================================================
+   FG2026 Patch v7: OTP request workflow + hide rated teams + server recap
+   - Juri ajukan OTP -> Admin approve -> OTP tersedia untuk juri (cek dari app)
+   - Tim yang sudah dinilai otomatis disembunyikan (toggle untuk tampilkan)
+   - Setelah simpan: form dibersihkan (lomba tetap, tim reset)
+   - Rekap: juri hanya lihat penilaiannya sendiri (server), admin lihat semua
+========================================================= */
+
+(function(){
+  // ---- Helpers ----
+  function isAdminUser(){
+    const p = oc(state,'session.profile') || null;
+    return oc(p,'role') === 'admin';
+  }
+
+  function currentScope(){
+    const cfg = state.config || {};
+    const date = (document.getElementById('eventDate')||{}).value || '';
+    const compId = (document.getElementById('competitionType')||{}).value || '';
+    const teamId = (document.getElementById('teamSelect')||{}).value || '';
+    const judgeNik = oc(state,'session.profile.nik') || 'UNKNOWN';
+    const eventId = cfg.event_id || 'FG';
+    return {
+      eventId, date, compId, teamId,
+      scopeKey: [eventId, date, compId, teamId, judgeNik].join('|')
+    };
+  }
+
+  // ---- 1) Team hiding: override updateTeams() to hide locked/rated teams by default ----
+  if(!updateTeams._patched_v7){
+    const _origUpdateTeamsV7 = updateTeams;
+    updateTeams = function(){
+      const cfg = state.config || { competitions:[] };
+      const compId = document.getElementById('competitionType').value;
+      state.ui.competitionId = compId;
+      const comp = (cfg.competitions||[]).find(c=>c.id===compId);
+      const teamSel = document.getElementById('teamSelect');
+      const teams = oc(comp,"teams") || [];
+
+      // hide rated/locked unless checkbox checked
+      const cb = document.getElementById('showRatedTeams');
+      const showLocked = !!(cb && cb.checked);
+      const lockedSet = getRatedTeamsSet(compId);
+
+      const items = teams.filter(t=>{
+        if(showLocked) return true;
+        return !lockedSet.has(t.id);
+      });
+
+      teamSel.innerHTML = `<option value="">-- pilih tim --</option>` + items.map(t=>{
+        const isLocked = lockedSet.has(t.id);
+        const badge = isLocked ? ' 🔒' : '';
+        return `<option value="${esc(t.id)}">${esc(t.name)}${badge}</option>`;
+      }).join("");
+
+      // reset selection every time competition changes
+      teamSel.value = "";
+      state.ui.teamId = "";
+      renderCriteria();
+      updateRatedHint();
+      applyLockUIForCurrent();
+    };
+    updateTeams._patched_v7 = true;
+  }
+
+  // ---- 2) After save: clear form, keep competition, reset team, and hide rated teams again ----
+  async function afterSuccessfulSaveCleanup(){
+    try{
+      const cb = document.getElementById('showRatedTeams');
+      if(cb) cb.checked = false; // default: sembunyikan yang terkunci
+
+      // re-render teams so rated ones disappear
+      updateTeams();
+
+      // keep competition, but clear team selection & criteria UI
+      const teamSel = document.getElementById('teamSelect');
+      if(teamSel) teamSel.value = "";
+      renderCriteria();
+      applyLockUIForCurrent();
+      updateRatedHint();
+
+      // scroll to top of form section for UX
+      const pane = document.getElementById('tab-rate');
+      if(pane) pane.scrollIntoView({ behavior:'smooth', block:'start' });
+    }catch(e){}
+  }
+
+  // Wrap saveAndSyncNow to call cleanup on success
+  if(!saveAndSyncNow._patched_v7){
+    const _origSaveAndSyncNow = saveAndSyncNow;
+    saveAndSyncNow = async function(){
+      const before = (state.outbox||[]).length;
+      await _origSaveAndSyncNow();
+      // If lock is set for current scope (meaning submit happened), cleanup
+      try{
+        const s = currentScope();
+        const sk = scopeKey(s.compId, s.teamId);
+        if(isScopeLocked(sk)){
+          await afterSuccessfulSaveCleanup();
+        }else{
+          // fallback: if outbox increased then likely saved
+          const after = (state.outbox||[]).length;
+          if(after > before) await afterSuccessfulSaveCleanup();
+        }
+      }catch(e){}
+    };
+    saveAndSyncNow._patched_v7 = true;
+  }
+
+  // ---- 3) OTP request workflow (Juri -> Admin approve -> Juri cek OTP) ----
+
+  function ensureOtpRequestUI(){
+    // change unlock button label
+    const btnUnlock = document.getElementById('btnUnlockOtp');
+    if(btnUnlock) btnUnlock.innerHTML = '<i class="fa-solid fa-key mr-2"></i>Minta OTP Admin';
+
+    const modal = document.getElementById('otpModal');
+    if(!modal) return;
+
+    // inject request tools if not exist
+    if(!document.getElementById('otpReqInfo')){
+      const host = modal.querySelector('.max-w-md');
+      if(host){
+        const anchor = document.getElementById('otpMsg');
+        if(anchor){
+          anchor.insertAdjacentHTML('afterend',
+            '<div id="otpReqInfo" class="mt-3 p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-700 hidden"></div>'+
+            '<div class="mt-3 grid grid-cols-2 gap-2">'+
+              '<button id="btnOtpRequest" class="px-3 py-3 rounded-2xl bg-amber-500 text-white hover:bg-amber-600">'+
+                '<i class="fa-solid fa-paper-plane mr-2"></i>Ajukan OTP'+
+              '</button>'+
+              '<button id="btnOtpCheck" class="px-3 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200">'+
+                '<i class="fa-solid fa-rotate mr-2"></i>Cek OTP Saya'+
+              '</button>'+
+            '</div>'
+          );
+        }
+      }
+    }
+
+    const btnReq = document.getElementById('btnOtpRequest');
+    if(btnReq && !btnReq.dataset._bound){
+      btnReq.dataset._bound='1';
+      btnReq.addEventListener('click', ()=>withBtnBusy(btnReq, 'Mengajukan…', requestOtpForCurrent));
+    }
+
+    const btnCheck = document.getElementById('btnOtpCheck');
+    if(btnCheck && !btnCheck.dataset._bound){
+      btnCheck.dataset._bound='1';
+      btnCheck.addEventListener('click', ()=>withBtnBusy(btnCheck, 'Mengecek…', checkMyOtpForCurrent));
+    }
+  }
+
+  function showOtpReqInfo(html, ok){
+    const box = document.getElementById('otpReqInfo');
+    if(!box) return;
+    box.classList.remove('hidden');
+    box.classList.toggle('border-emerald-200', !!ok);
+    box.classList.toggle('bg-emerald-50', !!ok);
+    box.classList.toggle('border-slate-200', !ok);
+    box.classList.toggle('bg-slate-50', !ok);
+    box.innerHTML = html;
+  }
+
+  async function requestOtpForCurrent(){
+    const s = currentScope();
+    if(!s.date || !s.compId || !s.teamId){
+      showOtpMsg('Pilih tanggal, lomba, dan tim dulu.');
+      return;
+    }
+    const payload = {
+      event_id: s.eventId,
+      date: s.date,
+      competition_id: s.compId,
+      team_id: s.teamId,
+      scope_key: s.scopeKey,
+      device_id: State.deviceId || ''
+    };
+
+    const res = await api('otp.request', payload);
+    if(!res || !res.ok) throw new Error(res && res.error ? res.error : 'Gagal mengajukan OTP');
+
+    if(res.status === 'APPROVED' && res.otp){
+      // already approved, show immediately
+      const exp = res.exp || '-';
+      showOtpReqInfo(
+        '<div class="font-semibold text-emerald-700">OTP sudah tersedia</div>'+
+        '<div class="mt-1">OTP: <b class="text-base">'+esc(res.otp)+'</b></div>'+
+        '<div class="mt-1 text-slate-600">Exp: '+esc(exp)+'</div>'+
+        '<button id="btnCopyOtpNow" class="mt-2 w-full px-3 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800">Copy OTP</button>',
+        true
+      );
+      setTimeout(()=>bindCopyOtp(res.otp), 0);
+      try{ document.getElementById('otpInput').value = res.otp; }catch(e){}
+      return;
+    }
+
+    showOtpReqInfo(
+      '<div class="font-semibold">Permintaan OTP terkirim</div>'+
+      '<div class="mt-1 text-slate-600">Admin akan melihat permintaan Anda di Tab Admin, lalu menekan Setujui untuk membuat OTP.</div>'+
+      '<div class="mt-2">Klik <b>Cek OTP Saya</b> untuk melihat OTP jika sudah disetujui.</div>',
+      true
+    );
+  }
+
+  function bindCopyOtp(otp){
+    const btn = document.getElementById('btnCopyOtpNow');
+    if(!btn || btn.dataset._bound) return;
+    btn.dataset._bound='1';
+    btn.addEventListener('click', async ()=>{
+      try{
+        await navigator.clipboard.writeText(String(otp));
+        toast('OTP tersalin', 'ok');
+      }catch(e){
+        toast('Gagal copy OTP', 'warn');
+      }
+    });
+  }
+
+  async function checkMyOtpForCurrent(){
+    const s = currentScope();
+    const res = await api('otp.my', {});
+    if(!res || !res.ok) throw new Error(res && res.error ? res.error : 'Gagal cek OTP');
+    const rows = res.rows || [];
+    const match = rows.find(r=>String(r.scope_key||'') === String(s.scopeKey||''));
+    if(!match){
+      showOtpReqInfo(
+        '<div class="font-semibold">OTP belum tersedia</div>'+
+        '<div class="mt-1 text-slate-600">Jika Anda sudah mengajukan, tunggu admin menekan Setujui. Lalu cek lagi.</div>',
+        false
+      );
+      return;
+    }
+    showOtpReqInfo(
+      '<div class="font-semibold text-emerald-700">OTP dari admin</div>'+
+      '<div class="mt-1">OTP: <b class="text-base">'+esc(match.otp)+'</b></div>'+
+      '<div class="mt-1 text-slate-600">Exp: '+esc(match.exp||'-')+'</div>'+
+      '<button id="btnCopyOtpNow" class="mt-2 w-full px-3 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800">Copy OTP</button>',
+      true
+    );
+    bindCopyOtp(match.otp);
+    try{ document.getElementById('otpInput').value = match.otp; }catch(e){}
+  }
+
+  // ensure UI exists
+  const _origEnsureRateUIAddons = ensureRateUIAddons;
+  ensureRateUIAddons = function(){
+    _origEnsureRateUIAddons();
+    ensureOtpRequestUI();
+  };
+
+  // ---- 4) Admin Tab: show OTP requests list + approve ----
+  function ensureAdminOtpPanel(){
+    const tab = document.getElementById('tab-admin');
+    if(!tab) return;
+    if(document.getElementById('otpReqAdminPanel')) return;
+
+    // insert panel at top of admin tab
+    const grid = tab.querySelector('.grid');
+    if(!grid) return;
+
+    const htmlPanel =
+      '<div id="otpReqAdminPanel" class="lg:col-span-3 p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">'+
+        '<div class="flex items-center justify-between gap-3">'+
+          '<div>'+
+            '<div class="font-semibold">Permintaan OTP (Unlock Penilaian)</div>'+
+            '<div class="text-xs text-slate-600 mt-1">Juri mengajukan OTP dari modal OTP. Admin menekan <b>Setujui</b>, lalu OTP bisa dicopy dan akan bisa diambil juri lewat tombol <b>Cek OTP Saya</b>.</div>'+
+          '</div>'+
+          '<button id="btnOtpReqReload" class="px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200">'+
+            '<i class="fa-solid fa-rotate mr-2"></i>Refresh'+
+          '</button>'+
+        '</div>'+
+        '<div id="otpReqAdminList" class="mt-4 space-y-3"></div>'+
+      '</div>';
+
+    grid.insertAdjacentHTML('afterbegin', htmlPanel);
+
+    const btn = document.getElementById('btnOtpReqReload');
+    if(btn) btn.addEventListener('click', ()=>withBtnBusy(btn, 'Memuat…', adminLoadOtpRequests));
+  }
+
+  function statusBadge(s){
+    const st = String(s||'').toUpperCase();
+    if(st==='PENDING') return '<span class="px-2 py-1 rounded-full text-xs bg-amber-100 text-amber-800">PENDING</span>';
+    if(st==='APPROVED') return '<span class="px-2 py-1 rounded-full text-xs bg-emerald-100 text-emerald-800">APPROVED</span>';
+    return '<span class="px-2 py-1 rounded-full text-xs bg-slate-100 text-slate-700">'+esc(st)+'</span>';
+  }
+
+  function fmtMini(ts){
+    try{
+      if(!ts) return '-';
+      const d = new Date(ts);
+      if(isNaN(d.getTime())) return String(ts);
+      return d.toLocaleString('id-ID', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+    }catch(e){ return String(ts||'-'); }
+  }
+
+  async function adminLoadOtpRequests(){
+    if(!isAdminUser()) return;
+    const res = await api('otp.requests.list', {});
+    if(!res || !res.ok) throw new Error(res && res.error ? res.error : 'Gagal memuat permintaan OTP');
+    const rows = res.rows || [];
+    const host = document.getElementById('otpReqAdminList');
+    if(!host) return;
+
+    if(!rows.length){
+      host.innerHTML = '<div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-sm text-slate-700">Belum ada permintaan OTP.</div>';
+      return;
+    }
+
+    host.innerHTML = rows.map(r=>{
+      const canApprove = String(r.status||'').toUpperCase()==='PENDING';
+      const otpPart = (String(r.status||'').toUpperCase()==='APPROVED' && r.otp && !r.used_at)
+        ? ('<div class="mt-2 text-sm">OTP: <b>'+esc(r.otp)+'</b> <span class="text-xs text-slate-500">(exp '+esc(fmtMini(r.exp_iso||''))+')</span></div>'+
+           '<button data-copy-otp="'+esc(r.otp)+'" class="mt-2 px-3 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800 text-sm w-full">Copy OTP</button>')
+        : '';
+
+      return (
+        '<div class="p-4 rounded-2xl border border-slate-200 bg-white">'+
+          '<div class="flex items-start justify-between gap-3">'+
+            '<div>'+
+              '<div class="font-semibold">'+esc(r.judge_name||'-')+' <span class="text-xs text-slate-500">('+esc(r.judge_nik||'-')+')</span></div>'+
+              '<div class="mt-1 text-xs text-slate-600">Tanggal: <b>'+esc(r.date||'-')+'</b> • Lomba: <b>'+esc(r.competition_id||'-')+'</b> • Tim: <b>'+esc(r.team_id||'-')+'</b></div>'+
+              '<div class="mt-1 text-xs text-slate-500">Diajukan: '+esc(fmtMini(r.created_at||''))+'</div>'+
+              (r.note?('<div class="mt-2 text-xs text-slate-700">Catatan: '+esc(r.note)+'</div>'):'')+
+              otpPart+
+            '</div>'+
+            '<div class="shrink-0 text-right space-y-2">'+
+              statusBadge(r.status)+
+              (canApprove
+                ? '<button data-approve-req="'+esc(r.id)+'" class="block w-full px-3 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 text-sm">Setujui</button>'
+                : '')+
+            '</div>'+
+          '</div>'+
+        '</div>'
+      );
+    }).join("");
+
+    // bind approve + copy
+    host.querySelectorAll('[data-approve-req]').forEach(btn=>{
+      if(btn.dataset._bound) return;
+      btn.dataset._bound='1';
+      btn.addEventListener('click', ()=>withBtnBusy(btn, 'Membuat OTP…', async ()=>{
+        const id = btn.getAttribute('data-approve-req');
+        const out = await api('otp.request.approve', { request_id: id, ttl_min: 10 });
+        if(!out || !out.ok) throw new Error(out && out.error ? out.error : 'Gagal approve');
+        toast('OTP dibuat: ' + out.otp, 'ok');
+        // refresh list to show OTP
+        await adminLoadOtpRequests();
+      }));
+    });
+
+    host.querySelectorAll('[data-copy-otp]').forEach(btn=>{
+      if(btn.dataset._bound) return;
+      btn.dataset._bound='1';
+      btn.addEventListener('click', async ()=>{
+        const otp = btn.getAttribute('data-copy-otp');
+        try{
+          await navigator.clipboard.writeText(String(otp));
+          toast('OTP tersalin', 'ok');
+        }catch(e){
+          toast('Gagal copy OTP', 'warn');
+        }
+      });
+    });
+  }
+
+  // ---- 5) Recap from server (mine vs admin) ----
+  async function refreshRecapFromServer(){
+    if(!oc(state,'session.token')) return;
+    if(!navigator.onLine) return;
+
+    let res;
+    if(isAdminUser()){
+      res = await api('admin.listRatings', {});
+    }else{
+      res = await api('ratings.listMine', {});
+    }
+    if(!res || !res.ok) throw new Error(res && res.error ? res.error : 'Gagal memuat rekap dari server');
+
+    // Store to local cache used by renderResults()
+    state.serverRatings = res.rows || [];
+    // Optional: merge to local ratings (for offline view). We keep local as-is, but render can prefer server if present.
+    renderResults();
+    toast(isAdminUser() ? 'Rekap server (semua juri) dimuat' : 'Rekap server (penilaian Anda) dimuat', 'ok');
+  }
+
+  // Patch renderResults to prefer serverRatings if exists
+  if(!renderResults._patched_v7){
+    const _origRenderResultsV7 = renderResults;
+    renderResults = function(){
+      // temporarily swap state.ratings for rendering if server data exists
+      const hasServer = Array.isArray(state.serverRatings) && state.serverRatings.length;
+      if(hasServer){
+        const backup = state.ratings;
+        try{
+          // convert server rows to same minimal shape expected by existing renderResults (it reads from state.ratings)
+          state.ratings = state.serverRatings.map(r=>{
+            // header in sheet: judge_nik etc. already
+            const o = {};
+            for(const k in r) o[k]=r[k];
+            // normalize key names used by frontend
+            o.event_id = o.event_id || (state.config && state.config.event_id) || 'FG';
+            o.date = o.date || '';
+            o.competition_id = o.competition_id || '';
+            o.team_id = o.team_id || '';
+            o.criterion_id = o.criterion_id || '';
+            o.rating = Number(o.rating || 0) || 0;
+            o.weight = Number(o.weight || 0) || 0;
+            o.judge_nik = o.judge_nik || (oc(state,'session.profile.nik')||'');
+            o.dedupe_key = o.dedupe_key || [o.event_id,o.date,o.competition_id,o.team_id,o.criterion_id,o.judge_nik].join('|');
+            return o;
+          });
+          _origRenderResultsV7();
+        }finally{
+          state.ratings = backup;
+        }
+        return;
+      }
+      _origRenderResultsV7();
+    };
+    renderResults._patched_v7 = true;
+  }
+
+  // Patch setTab: when open admin -> load requests; when open recap -> pull server
+  if(!setTab._patched_v7){
+    const _origSetTabV7 = setTab;
+    setTab = function(tab){
+      _origSetTabV7(tab);
+      if(tab === 'admin' && isAdminUser()){
+        ensureAdminOtpPanel();
+        adminLoadOtpRequests().catch(()=>{});
+      }
+      if(tab === 'recap'){
+        refreshRecapFromServer().catch(()=>{});
+      }
+    };
+    setTab._patched_v7 = true;
+  }
+
+  // ---- Boot hooks ----
+  try{
+    ensureOtpRequestUI();
+    if(isAdminUser()) ensureAdminOtpPanel();
+  }catch(e){}
+
+})();
+
 })();
 
 </script>

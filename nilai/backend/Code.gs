@@ -8,7 +8,8 @@ const CONFIG = {
     RATINGS: 'ratings',
     ADJUST: 'adjustments',
     LOG: 'api_log',
-    OTP: 'otp'
+    OTP: 'otp',
+    OTP_REQ: 'otp_requests'
   },
   SESSION_HOURS: 24,
   MAX_JSONP_CHUNK: 60 // max records per request untuk JSONP
@@ -60,6 +61,11 @@ function route_(action, p, body){
     case 'ratings.saveBatch': return ratingsSaveBatch_(p, body);
     case 'admin.createOtp': return adminCreateOtp_(p, body);
     case 'otp.verify': return otpVerify_(p, body);
+    case 'otp.request': return otpRequest_(p, body);
+    case 'otp.requests.list': return otpRequestsList_(p);
+    case 'otp.request.approve': return otpRequestApprove_(p, body);
+    case 'otp.my': return otpMy_(p);
+    case 'ratings.listMine': return ratingsListMine_(p);
     case 'adjustments.save': return adjustmentsSave_(p, body);
     case 'adjustments.list': return adjustmentsList_(p);
     default:
@@ -554,6 +560,7 @@ function consumeOtp_(otp, judge_nik, scope_key){
     if(expIso && new Date(expIso).getTime() < now) return false;
 
     sh.getRange(i+2,7,1,2).setValues([[new Date().toISOString(), judge_nik]]);
+    try{ markOtpRequestUsed_(otp, judge_nik, scope_key); }catch(e){}
     return true;
   }
   return false;
@@ -588,6 +595,247 @@ function findValidOtp_(otp, judge_nik, scope_key){
 
 function min_(a,b){ return a<b?a:b; }
 function max_(a,b){ return a>b?a:b; }
+
+
+
+/* =========================
+   OTP REQUESTS (Juri -> Admin)
+========================= */
+
+function otpReqSheet_(){
+  return ensureSheet_(CONFIG.SHEETS.OTP_REQ, [
+    'id','created_at','status',
+    'event_id','date','competition_id','team_id','scope_key',
+    'judge_nik','judge_name','device_id',
+    'note',
+    'approved_at','approved_by','otp','exp_iso',
+    'used_at'
+  ]);
+}
+
+function otpRequest_(p, body){
+  const ses = requireSession_(p);
+
+  const event_id = String((body && body.event_id) || p.event_id || '').trim();
+  const date = String((body && body.date) || p.date || '').trim();
+  const competition_id = String((body && body.competition_id) || p.competition_id || '').trim();
+  const team_id = String((body && body.team_id) || p.team_id || '').trim();
+  const scope_key = String((body && body.scope_key) || p.scope_key || '').trim();
+  const note = String((body && body.note) || p.note || '').trim();
+  const device_id = String((body && body.device_id) || p.device_id || '').trim();
+
+  if(!event_id || !date || !competition_id || !team_id || !scope_key){
+    return { ok:false, error:'event_id,date,competition_id,team_id,scope_key wajib' };
+  }
+
+  const sh = otpReqSheet_();
+  const lr = sh.getLastRow();
+  if(lr >= 2){
+    const data = sh.getRange(2,1,lr-1,17).getValues();
+    for(let i=data.length-1;i>=0;i--){
+      const row = data[i];
+      const status = String(row[2]||'').trim();
+      const rowScope = String(row[7]||'').trim();
+      const rowJudge = String(row[8]||'').trim();
+      const expIso = String(row[15]||'').trim();
+      const usedAt = String(row[16]||'').trim();
+
+      if(rowScope !== scope_key) continue;
+      if(rowJudge !== ses.nik) continue;
+
+      // jika sudah ada pending -> jangan bikin baru
+      if(status === 'PENDING'){
+        return { ok:true, request_id: String(row[0]||''), status:'PENDING', message:'Permintaan OTP sudah ada (pending).' };
+      }
+      // jika sudah approved tapi belum expired & belum used -> kembalikan OTP
+      if(status === 'APPROVED' && !usedAt){
+        if(expIso && new Date(expIso).getTime() > Date.now()){
+          return { ok:true, request_id: String(row[0]||''), status:'APPROVED', otp:String(row[14]||''), exp: expIso, scope_key };
+        }
+      }
+    }
+  }
+
+  const id = Utilities.getUuid();
+  sh.appendRow([
+    id, new Date().toISOString(), 'PENDING',
+    event_id, date, competition_id, team_id, scope_key,
+    ses.nik, ses.name || '', device_id,
+    note,
+    '', '', '', '',
+    ''
+  ]);
+
+  return { ok:true, request_id:id, status:'PENDING' };
+}
+
+function otpRequestsList_(p){
+  requireAdmin_(p);
+
+  const sh = otpReqSheet_();
+  const lr = sh.getLastRow();
+  if(lr < 2) return { ok:true, rows: [] };
+
+  const data = sh.getRange(2,1,lr-1,17).getValues();
+  const rows = data
+    .map(r=>({
+      id:String(r[0]||''),
+      created_at:r[1],
+      status:String(r[2]||''),
+      event_id:r[3], date:r[4], competition_id:r[5], team_id:r[6], scope_key:r[7],
+      judge_nik:r[8], judge_name:r[9], device_id:r[10], note:r[11],
+      approved_at:r[12], approved_by:r[13], otp:r[14], exp_iso:r[15], used_at:r[16]
+    }))
+    // tampilkan dulu yang PENDING lalu APPROVED belum used
+    .sort((a,b)=>{
+      const wa = a.status==='PENDING'?0:(a.status==='APPROVED' && !a.used_at?1:2);
+      const wb = b.status==='PENDING'?0:(b.status==='APPROVED' && !b.used_at?1:2);
+      if(wa!==wb) return wa-wb;
+      return String(b.created_at||'').localeCompare(String(a.created_at||''));
+    })
+    .slice(0,200);
+
+  return { ok:true, rows };
+}
+
+function otpRequestApprove_(p, body){
+  const ses = requireAdmin_(p);
+  const request_id = String((body && body.request_id) || p.request_id || '').trim();
+  const ttl_min = Number((body && body.ttl_min) || p.ttl_min || 10) || 10;
+  if(!request_id) return { ok:false, error:'request_id wajib' };
+
+  const sh = otpReqSheet_();
+  const lr = sh.getLastRow();
+  if(lr < 2) return { ok:false, error:'Belum ada request' };
+
+  const data = sh.getRange(2,1,lr-1,17).getValues();
+  let rowIdx = 0;
+  let row = null;
+  for(let i=0;i<data.length;i++){
+    if(String(data[i][0]||'') === request_id){
+      rowIdx = i+2;
+      row = data[i];
+      break;
+    }
+  }
+  if(!rowIdx) return { ok:false, error:'Request tidak ditemukan' };
+
+  const status = String(row[2]||'').trim();
+  if(status !== 'PENDING'){
+    // kalau sudah approved, kembalikan otp jika masih valid & belum used
+    const otp = String(row[14]||'').trim();
+    const expIso = String(row[15]||'').trim();
+    const usedAt = String(row[16]||'').trim();
+    if(status==='APPROVED' && otp && expIso && !usedAt && new Date(expIso).getTime() > Date.now()){
+      return { ok:true, request_id, status:'APPROVED', otp, exp: expIso, scope_key:String(row[7]||''), judge_nik:String(row[8]||'') };
+    }
+    return { ok:false, error:'Request sudah diproses: ' + status };
+  }
+
+  const judge_nik = String(row[8]||'').trim();
+  const scope_key = String(row[7]||'').trim();
+  if(!judge_nik || !scope_key) return { ok:false, error:'Data request tidak valid' };
+
+  // generate OTP & simpan ke sheet OTP utama (dipakai verifikasi/consume)
+  const otp = String(Math.floor(100000 + Math.random()*900000));
+  const exp = new Date(Date.now() + max_(3, min_(60, ttl_min))*60*1000);
+
+  // tulis ke sheet otp (created_at, otp, admin_nik, judge_nik, scope_key, exp_iso, used_at, used_by)
+  const otpSh = otpSheet_();
+  otpSh.appendRow([new Date().toISOString(), otp, ses.nik, judge_nik, scope_key, exp.toISOString(), '', '']);
+
+  // update request status
+  sh.getRange(rowIdx,1,1,17).setValues([[
+    String(row[0]||''), row[1], 'APPROVED',
+    row[3], row[4], row[5], row[6], scope_key,
+    judge_nik, row[9], row[10], row[11],
+    new Date().toISOString(), ses.nik, otp, exp.toISOString(),
+    ''
+  ]]);
+
+  return { ok:true, request_id, status:'APPROVED', otp, exp: exp.toISOString(), judge_nik, scope_key };
+}
+
+function otpMy_(p){
+  const ses = requireSession_(p);
+  const sh = otpReqSheet_();
+  const lr = sh.getLastRow();
+  if(lr < 2) return { ok:true, rows: [] };
+
+  const data = sh.getRange(2,1,lr-1,17).getValues();
+  const now = Date.now();
+  const rows = [];
+  for(let i=data.length-1;i>=0;i--){
+    const r = data[i];
+    const judge = String(r[8]||'').trim();
+    const status = String(r[2]||'').trim();
+    const otp = String(r[14]||'').trim();
+    const expIso = String(r[15]||'').trim();
+    const usedAt = String(r[16]||'').trim();
+    if(judge !== ses.nik) continue;
+    if(status !== 'APPROVED') continue;
+    if(usedAt) continue;
+    if(!otp || !expIso) continue;
+    if(new Date(expIso).getTime() < now) continue;
+
+    rows.push({
+      request_id: String(r[0]||''),
+      scope_key: String(r[7]||''),
+      otp, exp: expIso,
+      date: r[4], competition_id: r[5], team_id: r[6],
+      approved_at: r[12], approved_by: r[13]
+    });
+    if(rows.length >= 20) break;
+  }
+  return { ok:true, rows };
+}
+
+function markOtpRequestUsed_(otp, judge_nik, scope_key){
+  try{
+    const sh = otpReqSheet_();
+    const lr = sh.getLastRow();
+    if(lr < 2) return;
+    const data = sh.getRange(2,1,lr-1,17).getValues();
+    for(let i=data.length-1;i>=0;i--){
+      const r = data[i];
+      const rowOtp = String(r[14]||'').trim();
+      const rowJudge = String(r[8]||'').trim();
+      const rowScope = String(r[7]||'').trim();
+      const status = String(r[2]||'').trim();
+      const usedAt = String(r[16]||'').trim();
+      if(rowOtp!==otp) continue;
+      if(rowJudge!==judge_nik) continue;
+      if(rowScope!==scope_key) continue;
+      if(status!=='APPROVED') continue;
+      if(usedAt) return;
+      sh.getRange(i+2,17).setValue(new Date().toISOString());
+      return;
+    }
+  }catch(e){}
+}
+
+/* =========================
+   RATINGS LIST (Mine vs Admin)
+========================= */
+
+function ratingsListMine_(p){
+  const ses = requireSession_(p);
+  const sh = ensureSheet_(CONFIG.SHEETS.RATINGS, null);
+  const lr = sh.getLastRow();
+  if(lr < 2) return { ok:true, rows: [] };
+
+  const data = sh.getDataRange().getValues();
+  const header = data[0].map(h=>String(h||'').trim());
+  const rows = [];
+  for(let i=1;i<data.length;i++){
+    const r = data[i];
+    const o = {};
+    header.forEach((h,idx)=>{ o[h]=r[idx]; });
+    if(String(o.judge_nik||'').trim() !== String(ses.nik||'').trim()) continue;
+    rows.push(o);
+  }
+  return { ok:true, rows };
+}
 
 
 /* =========================
