@@ -2546,7 +2546,7 @@ function resetLocal(){
   $("#btnRetryAll").addEventListener("click", retryAll);
 
   // admin
-  $("#btnSaveConfig").addEventListener("click", saveConfigFromAdmin);
+  $("#btnSaveConfig").addEventListener("click", ()=> withBtnBusy($("#btnSaveConfig"), "Menyimpan…", saveConfigFromAdmin));
   $("#btnReloadConfig").addEventListener("click", reloadConfigAdmin);
   // live update basic fields into state (builder) so JSON stays in sync
   $("#cfgTitle").addEventListener("input", ()=>{

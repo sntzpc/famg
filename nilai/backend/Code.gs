@@ -77,11 +77,23 @@ function parseBody_(e){
     try{ return JSON.parse(c); }catch(_){}
     // parse payload param
     const m = c.match(/(?:^|&)payload=([^&]+)/);
-    if(m) return JSON.parse(decodeURIComponent(m[1]));
+    if(m) return JSON.parse(decodeURIComponent(String(m[1]).replace(/\+/g, "%20")));
     return null;
   }catch(err){
     return { _parseError: String(err) };
   }
+}
+
+function tryParsePayload_(s){
+  if(!s) return null;
+  const str = String(s);
+  // 1) coba langsung (kadang e.parameter sudah ter-decode)
+  try{ return JSON.parse(str); }catch(_){ }
+  // 2) coba decodeURIComponent biasa
+  try{ return JSON.parse(decodeURIComponent(str)); }catch(_){ }
+  // 3) handle + sebagai spasi (x-www-form-urlencoded)
+  try{ return JSON.parse(decodeURIComponent(str.replace(/\+/g, "%20"))); }catch(_){ }
+  return null;
 }
 
 function ss_(){ return SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID); }
@@ -181,7 +193,7 @@ function publicGetConfig_(){
 
 function adminSaveConfig_(p, body){
   const ses = requireAdmin_(p);
-  let cfg = (body && body.config) ? body.config : (p.payload ? JSON.parse(decodeURIComponent(p.payload)) : null);
+  let cfg = (body && body.config) ? body.config : (p.payload ? tryParsePayload_(p.payload) : null);
   if(cfg && cfg.config) cfg = cfg.config;
   if(!cfg) return { ok:false, error:'Missing config' };
 
@@ -208,8 +220,8 @@ function adminSaveConfigChunk_(p, body){
 
   let chunk = (body && body.chunk) ? body.chunk : null;
   if(chunk===null && p.payload){
-    const obj = JSON.parse(decodeURIComponent(p.payload));
-    chunk = obj?.chunk ?? null;
+    const obj = tryParsePayload_(p.payload);
+    chunk = (obj && obj.chunk !== undefined) ? obj.chunk : null;
   }
   if(chunk===null) return { ok:false, error:'Missing chunk' };
 
