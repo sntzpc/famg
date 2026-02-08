@@ -1,15 +1,3 @@
-
-/**
- * FG Evaluation Backend v5 (Google Apps Script)
- * - JSONP API (tanpa CORS) + POST fallback (tetap JSON response)
- * - Auth via NIK di sheet data_staff (kolom juri = TRUE)
- * - Role admin via sheet admin_users (kolom nik), optional dibuat otomatis
- * - Config editable oleh admin tersimpan di sheet app_config (config_json)
- * - Ratings dedupe: event_id + date + competition_id + team_id + criterion_id + judge_nik
- *
- * Spreadsheet ID: ganti di CONFIG.SPREADSHEET_ID
- */
-
 const CONFIG = {
   SPREADSHEET_ID: '1COAJ2tk0KgmUNbHGAwzY4S4Y0AFQ7uLykDOkZRujLcs', // <-- ganti sesuai file Anda
   SHEETS: {

@@ -650,22 +650,126 @@ function apiPm(action, params={}, payload=null){
   });
 }
 
+function apiPmPost(action, params={}, payload=null){
+  return new Promise(async (resolve, reject) => {
+    const bases = getGasBaseCandidates();
+    let lastErr = null;
+
+    for(const baseUrl of bases){
+      try{
+        const data = await new Promise((res, rej)=>{
+          const cbid = "FGPMPOST_" + Date.now() + "_" + Math.random().toString(16).slice(2);
+
+          // URL kecil: action/transport/cbid/token/params di query
+          const q = new URLSearchParams();
+          q.set("action", action);
+          q.set("transport", "pm");
+          q.set("cbid", cbid);
+          if(oc(state.session,"token")) q.set("token", state.session.token);
+
+          for(const [k,v] of Object.entries(params||{})){
+            if(v!==undefined && v!==null) q.set(k, String(v));
+          }
+
+          // cache-bust (hindari cache iframe)
+          q.set("_t", String(Date.now()));
+          q.set("_r", Math.random().toString(16).slice(2));
+
+          const url = baseUrl + (baseUrl.includes("?") ? "&" : "?") + q.toString();
+
+          // iframe target untuk form POST
+          const iframe = document.createElement("iframe");
+          iframe.name = cbid;
+          iframe.style.cssText =
+            "position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;";
+
+          const form = document.createElement("form");
+          form.method = "POST";
+          form.action = url;
+          form.target = cbid;
+          form.enctype = "application/x-www-form-urlencoded";
+
+          if(payload !== null){
+            const inp = document.createElement("input");
+            inp.type = "hidden";
+            inp.name = "payload";
+            // biarkan browser yang urlencode; backend parseBody_ handle decodeURIComponent(payload)
+            inp.value = JSON.stringify(payload);
+            form.appendChild(inp);
+          }
+
+          const timeout = setTimeout(()=>{
+            cleanup();
+            rej(new Error("Timeout memanggil server (pm-post)"));
+          }, 25000);
+
+          function onMsg(ev){
+            const d = ev && ev.data;
+            if(!d || d.__fg_pm !== true) return;
+            if(d.cbid !== cbid) return;
+            cleanup();
+            res(d.data);
+          }
+
+          function cleanup(){
+            clearTimeout(timeout);
+            window.removeEventListener("message", onMsg);
+            try{ form.remove(); }catch{}
+            try{ iframe.remove(); }catch{}
+          }
+
+          window.addEventListener("message", onMsg);
+          safeAppend(iframe);
+          safeAppend(form);
+
+          // submit setelah elemen terpasang
+          try{ form.submit(); }catch(e){
+            cleanup();
+            rej(new Error("Gagal submit PM-POST"));
+          }
+        });
+
+        if(data && typeof data === "object" && data.ok){
+          localStorage.setItem(LS_KEY_LAST_GOOD_BASE, baseUrl);
+          return resolve(data);
+        }else{
+          throw new Error(oc(data,"error") || oc(data,"message") || "Server error");
+        }
+
+      }catch(err){
+        lastErr = err;
+      }
+    }
+
+    reject(lastErr || new Error("Gagal memanggil server (pm-post)"));
+  });
+}
+
 // JSONP helper untuk payload besar (bypass limit URL dengan cara chunk)
 async function apiJsonpLarge(action, params={}, payloadObj=null){
   const payloadStr = payloadObj===null ? "" : JSON.stringify(payloadObj);
-  // Jika kecil, langsung pakai apiJsonp biasa
+
+  // 1) Payload kecil: pakai JSONP biasa
   if(payloadStr.length < 1200){
     return apiJsonp(action, params, payloadObj);
   }
-  // Chunked upload via JSONP (GET) -> admin.saveConfigChunk
+
+  // 2) Payload besar: utamakan PM via POST (anti limit URL, anti "Gagal memuat response JSONP")
+  try{
+    return await apiPmPost(action, params, payloadObj);
+  }catch(e){
+    // fallback ke chunked JSONP (kalau PM-POST diblokir oleh policy tertentu)
+  }
+
+  // 3) Fallback terakhir: chunked JSONP (GET) -> admin.saveConfigChunk (lebih kecil agar tidak kena limit URL)
   const uploadId = "U" + Date.now() + "_" + Math.random().toString(16).slice(2);
-  const chunkSize = 900; // aman utk URL (setelah encode)
+  const chunkSize = 600; // lebih konservatif
   const total = Math.ceil(payloadStr.length / chunkSize);
+
   for(let i=0;i<total;i++){
     const chunk = payloadStr.slice(i*chunkSize, (i+1)*chunkSize);
     await apiJsonp("admin.saveConfigChunk", { upload_id: uploadId, idx: i, total }, { chunk });
   }
-  // response final dikirim pada chunk terakhir
   return { ok:true, upload_id: uploadId };
 }
 
