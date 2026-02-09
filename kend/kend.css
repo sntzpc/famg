@@ -4,8 +4,10 @@
         @media print {
             @page { size: A4 portrait; margin: 10mm; }
             .page-break { page-break-after: always; }
-            .qr-sheet{ width:210mm; height:297mm; display:flex; align-items:center; justify-content:center; flex-direction:column; }
-            .qr-big{ width:180mm; height:180mm; }
+            .qr-sheet{ width:100%; min-height:277mm; display:flex; align-items:center; justify-content:center; flex-direction:column; }
+            .qr-big{ width:120mm; height:120mm; }
+            .qr-code-text{ font-size:100pt; font-weight:900; letter-spacing:1.5pt; margin-bottom:10mm; line-height:1; }
+            .qr-meta{ font-size:14pt; margin-top:8mm; }
 
             body * {
                 visibility: hidden;

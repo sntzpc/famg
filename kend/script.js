@@ -757,10 +757,10 @@ function ensureQr(targetEl, text, sizePx=900){
     const wrap = document.createElement('div');
     wrap.className = 'qr-print qr-sheet page-break';
     wrap.innerHTML = `
-      <div class="text-4xl font-extrabold mb-4">${escapeHtml(String(code))}</div>
+      <div class="qr-code-text">${escapeHtml(String(code))}</div>
       <div class="qr-big flex items-center justify-center rounded-2xl bg-white p-3 shadow-lg"></div>
       ${cat ? `<div class="mt-4 text-lg text-slate-700 italic">${escapeHtml(cat)}</div>` : ''}
-      <div class="mt-6 text-sm text-slate-500">Unit: <b>${escapeHtml(String(currentUnit||''))}</b> • Dicetak: ${new Date().toLocaleString('id-ID')}</div>
+      <div class="qr-meta text-slate-700">Unit: <b>${escapeHtml(String(currentUnit||''))}</b> • Dicetak: ${new Date().toLocaleString('id-ID')}</div>
     `;
     printContent.appendChild(wrap);
 
@@ -783,10 +783,10 @@ function ensureQr(targetEl, text, sizePx=900){
       const wrap = document.createElement('div');
       wrap.className = 'qr-print qr-sheet page-break';
       wrap.innerHTML = `
-        <div class="text-4xl font-extrabold mb-4">${escapeHtml(String(code))}</div>
+        <div class="qr-code-text">${escapeHtml(String(code))}</div>
         <div class="qr-big flex items-center justify-center rounded-2xl bg-white p-3 shadow-lg"></div>
         ${cat ? `<div class="mt-4 text-lg text-slate-700 italic">${escapeHtml(cat)}</div>` : ''}
-        <div class="mt-6 text-sm text-slate-500">Unit: <b>${escapeHtml(String(currentUnit||''))}</b></div>
+        <div class="qr-meta text-slate-700">Unit: <b>${escapeHtml(String(currentUnit||''))}</b></div>
       `;
       printContent.appendChild(wrap);
 
