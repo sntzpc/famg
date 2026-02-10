@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FG - Trigger</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: { fontFamily: { sans: ["Poppins","ui-sans-serif","system-ui"] } } } }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen font-sans">
+
+  <!-- MAIN: clean screen, only the button -->
+  <main class="min-h-screen flex items-center justify-center px-6">
+    <div class="flex flex-col items-center gap-4">
+      <button id="btnMain" class="group relative h-56 w-56 md:h-72 md:w-72 rounded-full bg-red-600 hover:bg-red-700 active:scale-[.98] transition shadow-2xl shadow-red-600/20 text-white font-extrabold text-3xl md:text-5xl tracking-wide">
+        <span id="btnLabel" class="inline-flex items-center justify-center gap-3">
+          ACAK
+        </span>
+      </button>
+
+      <button id="btnReroll" class="hidden rounded-2xl px-6 py-3 font-extrabold bg-white border hover:bg-slate-50">
+        Acak Ulang
+      </button>
+
+      <button id="btnLogout" class="text-xs font-bold text-slate-400 hover:text-slate-700 underline">
+        Logout
+      </button>
+    </div>
+  </main>
+
+  <!-- LOGIN MODAL (NIK) -->
+  <div id="nikModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"></div>
+    <div class="relative min-h-screen flex items-center justify-center p-6">
+      <div class="w-full max-w-md rounded-3xl bg-white border shadow-xl p-6 md:p-8">
+        <div class="text-xs uppercase tracking-widest text-slate-500">Akses Trigger</div>
+        <div class="text-2xl font-extrabold mt-2">Masukkan NIK</div>
+        <p class="text-sm text-slate-600 mt-2">NIK harus terdaftar dari Admin (Setting).</p>
+
+        <input id="nik" class="mt-5 w-full rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-900/10" placeholder="NIK" />
+
+        <button id="btnLogin" class="mt-4 w-full rounded-2xl px-4 py-3 font-extrabold bg-slate-900 text-white hover:bg-slate-800">
+          Login
+        </button>
+
+        <div class="mt-4 flex items-center justify-between">
+          <a href="./setting.html" class="text-sm font-bold underline text-slate-600 hover:text-slate-900">Setting</a>
+          <a href="./display.html" target="_blank" class="text-sm font-bold underline text-slate-600 hover:text-slate-900">Buka Display</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./js/config.js"></script>
+  <script src="./js/app.js"></script>
+  <script>
+    ensureToastHost();
+
+    const btnMain = $("#btnMain");
+    const btnLabel = $("#btnLabel");
+    const btnReroll = $("#btnReroll");
+    const nikModal = $("#nikModal");
+    const btnLogout = $("#btnLogout");
+
+    let mode = "ready"; // ready | running | done
+
+    function showNikModal(show){
+      nikModal.classList.toggle("hidden", !show);
+    }
+
+    function setMode(m){
+      mode = m;
+      if(m === "ready"){
+        btnMain.disabled = false;
+        btnMain.className = btnMain.className.replace(/bg-(red|green)-\d+/g, "bg-red-600").replace(/hover:bg-(red|green)-\d+/g, "hover:bg-red-700");
+        btnMain.classList.remove("bg-green-600","hover:bg-green-700");
+        btnMain.classList.add("bg-red-600","hover:bg-red-700");
+        btnLabel.innerHTML = "ACAK";
+        btnReroll.classList.add("hidden");
+      }
+      if(m === "running"){
+        btnMain.disabled = true;
+        btnLabel.innerHTML = `
+          <svg class="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" d="M4 12a8 8 0 018-8" stroke="currentColor" stroke-width="4" stroke-linecap="round"></path>
+          </svg>
+          MENGACAK...`;
+        btnReroll.classList.add("hidden");
+      }
+      if(m === "done"){
+        btnMain.disabled = true;
+        btnMain.classList.remove("bg-red-600","hover:bg-red-700");
+        btnMain.classList.add("bg-green-600","hover:bg-green-700");
+        btnLabel.innerHTML = "SELESAI";
+        btnReroll.classList.remove("hidden");
+      }
+    }
+
+    function getToken(){
+      return localStorage.getItem(LS.triggerToken) || "";
+    }
+
+    async function checkHasDraws(){
+      try{
+        const l = await api("draw.list");
+        if(l && l.ok && (l.items||[]).length > 0) setMode("done");
+        else setMode("ready");
+      }catch(_){
+        setMode("ready");
+      }
+    }
+
+    async function ensureLogin(){
+      const t = getToken();
+      if(!t){
+        showNikModal(true);
+        return false;
+      }
+      // soft validate by calling display.state (public) + then draw.list
+      showNikModal(false);
+      return true;
+    }
+
+    $("#btnLogin").onclick = async ()=>{
+      try{
+        setBtnBusy($("#btnLogin"), true, "Login...");
+        const nik = $("#nik").value.trim();
+        if(!nik) throw new Error("NIK wajib diisi");
+        const r = await api("trigger.login", { nik });
+        if(!r.ok) throw new Error(r.error || "Login gagal");
+        localStorage.setItem(LS.triggerToken, r.token);
+        localStorage.setItem(LS.triggerExp, r.expiresAt);
+        showNikModal(false);
+        toast("Login trigger berhasil", "ok");
+        await checkHasDraws();
+      }catch(e){
+        toast(e.message, "err");
+      }finally{
+        setBtnBusy($("#btnLogin"), false);
+      }
+    };
+
+    btnLogout.onclick = ()=>{
+      localStorage.removeItem(LS.triggerToken);
+      localStorage.removeItem(LS.triggerExp);
+      toast("Logout", "ok");
+      showNikModal(true);
+      setMode("ready");
+    };
+
+    btnMain.onclick = async ()=>{
+      try{
+        if(!(await ensureLogin())) return;
+        const token = getToken();
+        if(!token) throw new Error("Belum login");
+        setMode("running");
+        const r = await api("draw.runAll", { token });
+        if(!r.ok) throw new Error(r.error || "Gagal mengacak");
+        if(navigator.vibrate) navigator.vibrate(60);
+        toast("Selesai mengacak: " + (r.total||0) + " unit", "ok");
+        setMode("done");
+      }catch(e){
+        toast(e.message, "err");
+        setMode("ready");
+      }
+    };
+
+    btnReroll.onclick = async ()=>{
+      try{
+        if(!(await ensureLogin())) return;
+        const token = getToken();
+        if(!token) throw new Error("Belum login");
+        setBtnBusy(btnReroll, true, "Reset...");
+        const r = await api("draw.reset", { token });
+        if(!r.ok) throw new Error(r.error || "Gagal reset");
+        toast("Reset OK. Siap ACAK lagi.", "ok");
+        setMode("ready");
+      }catch(e){
+        toast(e.message, "err");
+      }finally{
+        setBtnBusy(btnReroll, false);
+      }
+    };
+
+    // init
+    (async ()=>{
+      await ensureLogin();
+      await checkHasDraws();
+    })();
+  </script>
+</body>
+</html>

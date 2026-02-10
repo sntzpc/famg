@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FG - Setting</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: { fontFamily: { sans: ["Poppins","ui-sans-serif","system-ui"] } } } }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen font-sans">
+
+  <div class="max-w-6xl mx-auto px-4 py-8 md:py-12">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <h1 class="text-2xl md:text-4xl font-extrabold tracking-tight">Setting Pengacakan Unit</h1>
+        <p class="text-slate-600 mt-1">Akses admin via modal (default: <b>admin / admin123</b>). Backend GAS sudah hardcode.</p>
+      </div>
+      <div class="flex gap-2">
+        <a href="./trigger.html" class="rounded-2xl px-4 py-2.5 font-extrabold bg-white border hover:bg-slate-50">Trigger</a>
+        <a href="./display.html" class="rounded-2xl px-4 py-2.5 font-extrabold bg-white border hover:bg-slate-50">Display</a>
+        <button id="btnOpenLogin" class="rounded-2xl px-4 py-2.5 font-extrabold bg-slate-900 text-white hover:bg-slate-800">Login</button>
+        <button id="btnLogout" class="rounded-2xl px-4 py-2.5 font-extrabold bg-white border hover:bg-slate-50">Logout</button>
+      </div>
+    </div>
+
+    <div class="mt-6 text-sm text-slate-500">
+      Status: <span id="loginState" class="font-bold">Belum login</span>
+    </div>
+
+    <div class="mt-8 grid lg:grid-cols-2 gap-5">
+      <!-- Allowed NIK -->
+      <div class="rounded-3xl border bg-white shadow-sm p-6">
+        <div class="flex items-end justify-between gap-3">
+          <div>
+            <div class="text-xs uppercase tracking-widest text-slate-500">Hak akses</div>
+            <div class="text-lg font-extrabold mt-1">NIK yang Boleh Masuk Trigger</div>
+            <p class="text-sm text-slate-600 mt-1">Masukkan 1 NIK per baris.</p>
+          </div>
+          <button id="btnSaveNiks" class="rounded-2xl px-4 py-2.5 font-extrabold bg-slate-900 text-white hover:bg-slate-800">Simpan</button>
+        </div>
+        <textarea id="allowedNiks" rows="8" class="mt-4 w-full rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-900/10" placeholder="contoh:\n20160254\n20130342"></textarea>
+      </div>
+
+      <!-- Security -->
+      <div class="rounded-3xl border bg-white shadow-sm p-6">
+        <div class="text-xs uppercase tracking-widest text-slate-500">Keamanan</div>
+        <div class="text-lg font-extrabold mt-1">Ganti Password Admin</div>
+        <label class="text-sm font-bold text-slate-700 mt-4 block">Password Baru</label>
+        <input id="newPass" type="password" class="mt-2 w-full rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-900/10" placeholder="minimal 6 karakter" />
+        <button id="btnSetPass" class="mt-3 w-full rounded-2xl px-4 py-3 font-extrabold bg-slate-900 text-white hover:bg-slate-800">Simpan Password</button>
+
+        <div class="mt-6 border-t pt-6">
+          <div class="text-xs uppercase tracking-widest text-slate-500">Reset</div>
+          <div class="text-lg font-extrabold mt-1">Reset Pengacakan</div>
+          <p class="text-sm text-slate-600 mt-1">Menghapus hasil (Draws) dan mengaktifkan semua peserta kembali.</p>
+          <button id="btnClearDraws" class="mt-3 w-full rounded-2xl px-4 py-3 font-extrabold bg-white border hover:bg-slate-50">Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Participants -->
+    <div class="mt-5 rounded-3xl border bg-white shadow-sm p-6">
+      <div class="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div class="text-xs uppercase tracking-widest text-slate-500">Master</div>
+          <div class="text-lg font-extrabold mt-1">Daftar Unit Peserta</div>
+          <p class="text-sm text-slate-600 mt-1">Kategori: A (banyak), B (sedikit), C (support).</p>
+        </div>
+        <button id="btnReload" class="rounded-2xl px-4 py-2.5 font-extrabold bg-white border hover:bg-slate-50">Reload</button>
+      </div>
+
+      <div class="mt-4 grid md:grid-cols-4 gap-3">
+        <input id="pName" class="rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-900/10" placeholder="Nama (opsional)" />
+        <input id="pUnit" class="rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-900/10" placeholder="Unit (wajib)" />
+        <select id="pCat" class="rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-900/10">
+          <option value="A">A - Banyak</option>
+          <option value="B" selected>B - Sedikit</option>
+          <option value="C">C - Support</option>
+        </select>
+        <button id="btnAdd" class="rounded-2xl px-4 py-3 font-extrabold bg-slate-900 text-white hover:bg-slate-800">Tambah</button>
+      </div>
+
+      <div class="mt-4 overflow-auto max-h-[60vh] rounded-2xl border">
+        <table class="min-w-full text-sm">
+          <thead class="sticky top-0 bg-slate-50 border-b">
+            <tr>
+              <th class="text-left p-3 font-extrabold text-slate-600">Unit</th>
+              <th class="text-left p-3 font-extrabold text-slate-600">Kategori</th>
+              <th class="text-left p-3 font-extrabold text-slate-600">Aktif</th>
+              <th class="text-right p-3 font-extrabold text-slate-600">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="pRows" class="divide-y"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADMIN LOGIN MODAL -->
+  <div id="adminModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"></div>
+    <div class="relative min-h-screen flex items-center justify-center p-6">
+      <div class="w-full max-w-md rounded-3xl bg-white border shadow-xl p-6 md:p-8">
+        <div class="text-xs uppercase tracking-widest text-slate-500">Admin</div>
+        <div class="text-2xl font-extrabold mt-2">Login</div>
+        <p class="text-sm text-slate-600 mt-2">Default: <b>admin</b> / <b>admin123</b></p>
+
+        <label class="text-sm font-bold text-slate-700 mt-5 block">Username</label>
+        <input id="username" class="mt-2 w-full rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-900/10" value="admin" />
+
+        <label class="text-sm font-bold text-slate-700 mt-4 block">Password</label>
+        <input id="password" type="password" class="mt-2 w-full rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-900/10" placeholder="admin123" />
+
+        <button id="btnLogin" class="mt-5 w-full rounded-2xl px-4 py-3 font-extrabold bg-slate-900 text-white hover:bg-slate-800">Login</button>
+
+        <button id="btnCloseLogin" class="mt-3 w-full rounded-2xl px-4 py-3 font-extrabold bg-white border hover:bg-slate-50">Tutup</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./js/config.js"></script>
+  <script src="./js/app.js"></script>
+  <script>
+    ensureToastHost();
+
+    const adminModal = $("#adminModal");
+    const loginState = $("#loginState");
+
+    function showAdminModal(show){ adminModal.classList.toggle("hidden", !show); }
+    function adminToken(){ return localStorage.getItem(LS.adminToken) || ""; }
+
+    function setLoginState(){
+      const t = localStorage.getItem(LS.adminToken);
+      const exp = localStorage.getItem(LS.adminExp);
+      loginState.textContent = t ? ("Login OK (exp " + new Date(exp).toLocaleString("id-ID") + ")") : "Belum login";
+    }
+    setLoginState();
+
+    $("#btnOpenLogin").onclick = ()=> showAdminModal(true);
+    $("#btnCloseLogin").onclick = ()=> showAdminModal(false);
+
+    $("#btnLogin").onclick = async ()=>{
+      try{
+        setBtnBusy($("#btnLogin"), true, "Login...");
+        const username = $("#username").value.trim();
+        const pass = $("#password").value;
+        if(!username || !pass) throw new Error("Username & password wajib");
+        const hash = await sha256Hex(pass);
+        const r = await api("admin.login", { username, passwordHash: hash });
+        if(!r.ok) throw new Error(r.error || "Login gagal");
+        localStorage.setItem(LS.adminToken, r.token);
+        localStorage.setItem(LS.adminExp, r.expiresAt);
+        $("#password").value = "";
+        showAdminModal(false);
+        toast("Login admin berhasil", "ok");
+        setLoginState();
+        await loadAdminConfig();
+        await loadParticipants();
+      }catch(e){
+        toast(e.message, "err");
+      }finally{
+        setBtnBusy($("#btnLogin"), false);
+      }
+    };
+
+    $("#btnLogout").onclick = async ()=>{
+      try{
+        const token = adminToken();
+        localStorage.removeItem(LS.adminToken);
+        localStorage.removeItem(LS.adminExp);
+        setLoginState();
+        if(token) await api("admin.logout", { token });
+        toast("Logout", "ok");
+      }catch(e){ toast(e.message, "err"); }
+    };
+
+    async function requireAdmin(){
+      const token = adminToken();
+      if(!token) throw new Error("Harus login admin");
+      return token;
+    }
+
+    async function loadAdminConfig(){
+      const token = await requireAdmin();
+      const r = await api("admin.get", { token });
+      if(!r.ok) throw new Error(r.error || "Gagal ambil setting");
+      $("#allowedNiks").value = (r.allowedNiks || []).join("\n");
+    }
+
+    $("#btnSaveNiks").onclick = async ()=>{
+      try{
+        const token = await requireAdmin();
+        setBtnBusy($("#btnSaveNiks"), true, "Menyimpan...");
+        const arr = $("#allowedNiks").value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+        const r = await api("admin.setAllowedNiks", { token, allowedJson: JSON.stringify(arr) });
+        if(!r.ok) throw new Error(r.error || "Gagal simpan");
+        toast("NIK trigger tersimpan (" + (r.allowedNiks||[]).length + ")", "ok");
+      }catch(e){ toast(e.message, "err"); }
+      finally{ setBtnBusy($("#btnSaveNiks"), false); }
+    };
+
+    $("#btnSetPass").onclick = async ()=>{
+      try{
+        const token = await requireAdmin();
+        const pass = $("#newPass").value;
+        if(!pass || pass.length < 6) throw new Error("Password minimal 6 karakter");
+        setBtnBusy($("#btnSetPass"), true, "Menyimpan...");
+        const newHash = await sha256Hex(pass);
+        const r = await api("admin.setPassword", { token, newHash });
+        if(!r.ok) throw new Error(r.error || "Gagal simpan");
+        $("#newPass").value = "";
+        toast("Password admin diperbarui", "ok");
+      }catch(e){ toast(e.message, "err"); }
+      finally{ setBtnBusy($("#btnSetPass"), false); }
+    };
+
+    function renderParticipants(items){
+      const tb = $("#pRows");
+      tb.innerHTML = items.map(it=>{
+        return `
+          <tr class="hover:bg-slate-50">
+            <td class="p-3 font-extrabold">${escapeHtml(it.unit)}</td>
+            <td class="p-3"><span class="inline-flex rounded-full border px-2.5 py-1 text-xs font-extrabold ${badgeCat(it.category)}">${formatCat(it.category)}</span></td>
+            <td class="p-3">
+              <label class="inline-flex items-center gap-2">
+                <input data-id="${it.id}" class="pActive h-4 w-4" type="checkbox" ${it.active ? "checked" : ""} />
+                <span class="text-xs text-slate-500">${it.active ? "TRUE" : "FALSE"}</span>
+              </label>
+            </td>
+            <td class="p-3 text-right">
+              <button data-id="${it.id}" class="pDel font-extrabold text-red-600 hover:text-red-800 underline">Hapus</button>
+            </td>
+          </tr>
+        `;
+      }).join("");
+
+      $all(".pDel").forEach(btn=>{
+        btn.onclick = async ()=>{
+          try{
+            const token = await requireAdmin();
+            const id = btn.dataset.id;
+            if(!confirm("Hapus unit ini?")) return;
+            const r = await api("participants.delete", { token, id });
+            if(!r.ok) throw new Error(r.error || "Gagal hapus");
+            toast("Terhapus", "ok");
+            await loadParticipants();
+          }catch(e){ toast(e.message, "err"); }
+        };
+      });
+
+      $all(".pActive").forEach(ch=>{
+        ch.onchange = async ()=>{
+          try{
+            const token = await requireAdmin();
+            const id = ch.dataset.id;
+            const list = await api("participants.list", { token });
+            if(!list.ok) throw new Error(list.error || "Gagal list");
+            const it = (list.items||[]).find(x=>x.id===id);
+            if(!it) return;
+            const r = await api("participants.upsert", { token, id, name: it.name || "-", unit: it.unit, category: it.category, active: ch.checked ? "TRUE" : "FALSE" });
+            if(!r.ok) throw new Error(r.error || "Gagal update");
+          }catch(e){
+            toast(e.message, "err");
+            ch.checked = !ch.checked;
+          }
+        };
+      });
+    }
+
+    async function loadParticipants(){
+      const token = await requireAdmin();
+      const r = await api("participants.list", { token });
+      if(!r.ok) throw new Error(r.error || "Gagal list peserta");
+      const items = (r.items || []).sort((a,b)=>(a.unit||"").localeCompare(b.unit||""));
+      renderParticipants(items);
+    }
+
+    $("#btnAdd").onclick = async ()=>{
+      try{
+        const token = await requireAdmin();
+        const name = $("#pName").value.trim() || "-";
+        const unit = $("#pUnit").value.trim();
+        const category = $("#pCat").value;
+        if(!unit) throw new Error("Unit wajib diisi");
+        setBtnBusy($("#btnAdd"), true, "Menambah...");
+        const r = await api("participants.upsert", { token, name, unit, category, active: "TRUE" });
+        if(!r.ok) throw new Error(r.error || "Gagal tambah");
+        $("#pUnit").value = "";
+        $("#pName").value = "";
+        toast("Unit ditambahkan", "ok");
+        await loadParticipants();
+      }catch(e){ toast(e.message, "err"); }
+      finally{ setBtnBusy($("#btnAdd"), false); }
+    };
+
+    $("#btnReload").onclick = async ()=>{
+      try{
+        await loadAdminConfig();
+        await loadParticipants();
+        toast("Reload OK", "ok");
+      }catch(e){ toast(e.message, "err"); }
+    };
+
+    $("#btnClearDraws").onclick = async ()=>{
+      try{
+        const token = await requireAdmin();
+        if(!confirm("Reset pengacakan? (Draws dibersihkan & semua peserta aktif kembali)")) return;
+        setBtnBusy($("#btnClearDraws"), true, "Reset...");
+        const r = await api("draws.clear", { token });
+        if(!r.ok) throw new Error(r.error || "Gagal reset");
+        toast("Reset OK", "ok");
+        await loadParticipants();
+      }catch(e){ toast(e.message, "err"); }
+      finally{ setBtnBusy($("#btnClearDraws"), false); }
+    };
+
+    // auto-load if already logged in; else show modal
+    (async ()=>{
+      try{
+        if(adminToken()){
+          await loadAdminConfig();
+          await loadParticipants();
+        } else {
+          showAdminModal(true);
+        }
+      }catch(e){
+        // token might be expired
+        localStorage.removeItem(LS.adminToken);
+        localStorage.removeItem(LS.adminExp);
+        setLoginState();
+        showAdminModal(true);
+      }
+    })();
+  </script>
+</body>
+</html>
