@@ -18,6 +18,9 @@ class Auth {
         this.ensureConfigAndRefresh();
         this.listenConfigReady();
 
+        // ✅ Badge jarak lokasi (mobile-friendly)
+        this.initLocationBadge();
+
         // ✅ Auto-login 24 jam untuk peserta yang SUDAH presensi sukses
         setTimeout(()=>{ try{ this.tryAutoLoginFromRemember(); }catch{} }, 50);
     }
@@ -66,6 +69,7 @@ class Auth {
         this.authSection = document.getElementById('auth-section');
         this.appSection = document.getElementById('app-section');
         this.logoutBtn = document.getElementById('logout-btn');
+        this.presenceLocationNote = document.getElementById('presence-location-note');
 
         this.bindEvents();
     }
@@ -753,6 +757,67 @@ async tryAutoLoginFromRemember(){
             } catch (e) {
                 sessionStorage.removeItem('currentUser');
             }
+        }
+    }
+
+    // ===============================
+    // ✅ Badge jarak lokasi acara (untuk mobile)
+    // ===============================
+    initLocationBadge(){
+        // hanya kalau elemen note ada
+        if(!this.presenceLocationNote) return;
+
+        // tampilkan status awal
+        this.presenceLocationNote.innerHTML =
+          '<span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">📍 Mengecek jarak lokasi…</span>';
+
+        // update awal + interval ringan
+        this.updateLocationBadge().catch(()=>{});
+        clearInterval(this._locBadgeTimer);
+        this._locBadgeTimer = setInterval(()=>{ this.updateLocationBadge().catch(()=>{}); }, 15000);
+    }
+
+    formatMeters(m){
+        if(!Number.isFinite(m)) return '-';
+        if(m >= 1000) return (m/1000).toFixed(2) + ' km';
+        return Math.round(m) + ' m';
+    }
+
+    async updateLocationBadge(){
+        if(!this.presenceLocationNote) return;
+
+        const cfg = window.AppConfig || {};
+        const geoOn = !!(cfg.security && cfg.security.enableGeofencing);
+
+        // kalau geofence tidak dipakai, jangan ganggu teks branding (tetap tampil)
+        if(!geoOn) return;
+
+        const st = await this.utils.getGeofenceStatus();
+        const locName = st.location?.name ? String(st.location.name) : 'Lokasi acara';
+        const radiusM = Number(st.radiusM || 0);
+
+        // kalau error geolokasi
+        if(st.error){
+            this.presenceLocationNote.innerHTML =
+                '<span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">⚠️ Lokasi tidak terdeteksi</span>' +
+                (radiusM ? ` <span class="text-xs text-gray-500">Radius ${this.formatMeters(radiusM)}</span>` : '');
+            return;
+        }
+
+        const d = Number(st.distanceM);
+        const inR = !!st.inRadius;
+
+        if(inR){
+            // di dalam area: tampilkan jarak dari titik
+            this.presenceLocationNote.innerHTML =
+                `<span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">✅ Dalam area • ${this.formatMeters(d)}</span>` +
+                (radiusM ? ` <span class="text-xs text-gray-500">Radius ${this.formatMeters(radiusM)} • ${locName}</span>` : '');
+        }else{
+            // di luar area: tampilkan "di luar berapa meter" (selisih dari radius)
+            const outBy = Math.max(0, d - radiusM);
+            this.presenceLocationNote.innerHTML =
+                `<span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-800">⛔ Di luar area • ${this.formatMeters(outBy)}</span>` +
+                ` <span class="text-xs text-gray-500">(Jarak ${this.formatMeters(d)} • Radius ${this.formatMeters(radiusM)} • ${locName})</span>`;
         }
     }
 

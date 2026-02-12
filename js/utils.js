@@ -159,14 +159,35 @@ class Utils {
     }
   }
 
-  async checkLocation() {
+    async getGeofenceStatus() {
     const cfg = this.getConfig();
 
-    if (!cfg?.security?.enableGeofencing) return true;
+    // Geofencing off => anggap selalu OK
+    if (!cfg?.security?.enableGeofencing) {
+      return {
+        enabled: false,
+        inRadius: true,
+        distanceM: 0,
+        radiusM: 0,
+        location: null,
+        userLocation: null,
+        accuracy: null,
+        error: null
+      };
+    }
 
+    // Debug mode => selalu OK (tanpa geolokasi)
     if (cfg?.security?.debugMode) {
-      console.log('[DEBUG] Geofencing check: simulated TRUE');
-      return true;
+      return {
+        enabled: true,
+        inRadius: true,
+        distanceM: 0,
+        radiusM: Number((cfg.getEventLocation?.() || {}).radius || 0),
+        location: (typeof cfg.getEventLocation === 'function') ? cfg.getEventLocation() : null,
+        userLocation: null,
+        accuracy: null,
+        error: null
+      };
     }
 
     try {
@@ -174,29 +195,61 @@ class Utils {
         ? cfg.getEventLocation()
         : { lat: NaN, lng: NaN, radius: 0, name: '', address: '' };
 
-      if (!Number.isFinite(location.lat) || !Number.isFinite(location.lng) || !Number.isFinite(location.radius)) {
+      const radiusM = Number(location.radius || 0);
+
+      if (!Number.isFinite(location.lat) || !Number.isFinite(location.lng) || !Number.isFinite(radiusM)) {
         console.warn('Geofence config invalid:', location);
-        return true;
+        return {
+          enabled: true,
+          inRadius: true, // fallback aman: jangan blokir user kalau config geofence rusak
+          distanceM: 0,
+          radiusM,
+          location,
+          userLocation: null,
+          accuracy: null,
+          error: null
+        };
       }
 
       const userLocation = await this.getCurrentLocation();
-      const distance = this.calculateDistance(
+      const distanceM = this.calculateDistance(
         userLocation.lat, userLocation.lng,
         location.lat, location.lng
       );
 
-      const inRadius = distance <= Number(location.radius || 0);
+      const inRadius = distanceM <= radiusM;
 
-      if (cfg?.security?.debugMode) {
-        console.log(`[DEBUG] Distance: ${distance.toFixed(2)}m, In radius: ${inRadius}`);
-      }
-
-      return inRadius;
+      return {
+        enabled: true,
+        inRadius,
+        distanceM,
+        radiusM,
+        location,
+        userLocation,
+        accuracy: userLocation.accuracy,
+        error: null
+      };
     } catch (error) {
-      console.error('Error in checkLocation:', error);
-      this.showNotification('Lokasi gagal dideteksi. Aktifkan GPS & izin lokasi, lalu refresh.', 'warning');
-      return false;
+      console.error('Error in getGeofenceStatus:', error);
+      return {
+        enabled: true,
+        inRadius: false,
+        distanceM: NaN,
+        radiusM: Number((cfg.getEventLocation?.() || {}).radius || 0),
+        location: (typeof cfg.getEventLocation === 'function') ? cfg.getEventLocation() : null,
+        userLocation: null,
+        accuracy: null,
+        error
+      };
     }
+  }
+
+  async checkLocation() {
+    const st = await this.getGeofenceStatus();
+    if (st.error) {
+      this.showNotification('Lokasi gagal dideteksi. Aktifkan GPS & izin lokasi, lalu refresh.', 'warning');
+    }
+    return !!st.inRadius;
   }
 
   // ===============================
