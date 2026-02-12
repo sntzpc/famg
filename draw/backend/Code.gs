@@ -18,6 +18,8 @@ const SETTINGS = {
   TOKEN_TTL_MIN: "720" // 12 hours
 };
 
+const DRAW_PATTERN = ["B","A","B","A","C"];
+
 function getSS_(){
   if(SETTINGS.SS_ID) return SpreadsheetApp.openById(SETTINGS.SS_ID);
   return SpreadsheetApp.getActiveSpreadsheet();
@@ -238,94 +240,36 @@ function drawNext_(p){
   const ses = tokenValidate_(token, "trigger");
   if(!ses) throw new Error("Token trigger tidak valid / expired. Login ulang.");
 
-  // Read active participants by category
+  // Read active participants
   const parts = participantsReadActive_();
   if(parts.length === 0) throw new Error("Tidak ada peserta aktif untuk diacak.");
 
-  // Determine next item with constraints:
-  // - Prefer pattern that avoids adjacent A/C (i.e., no two non-B consecutively).
-  // - Best-effort when B is insufficient.
-  const m = settingsGetMap_();
-  let cur = {};
-  try{ cur = JSON.parse(m.DRAW_CURRENT || "{}") || {}; }catch(_){
-    cur = {};
-  }
-  const lastCat = String(cur.category || "");
+  // Pools (shuffled)
+  const poolA = shuffleArr_(parts.filter(x=>x.category==="A"));
+  const poolB = shuffleArr_(parts.filter(x=>x.category==="B"));
+  const poolC = shuffleArr_(parts.filter(x=>x.category==="C"));
 
-  // Build pools
-  const poolA = parts.filter(x=>x.category==="A");
-  const poolB = parts.filter(x=>x.category==="B");
-  const poolC = parts.filter(x=>x.category==="C");
+  // Determine next drawNo (based on Draws sheet)
+  const shD = sheet_("Draws", ["draw_no","ts","name","unit","category","participant_id","by_nik"]);
+  const nextDrawNo = Math.max(0, shD.getLastRow()-1) + 1;
 
-  // We'll shuffle deterministically-ish each draw using Utilities.getUuid() seed-ish
-  const seed = Utilities.getUuid();
-  function shuffle_(arr){
-    for(let i=arr.length-1;i>0;i--){
-      const j = Math.floor(Math.abs(hashCode_(seed + i)) % (i+1));
-      const tmp = arr[i]; arr[i]=arr[j]; arr[j]=tmp;
-    }
-    return arr;
-  }
-  shuffle_(poolA); shuffle_(poolB); shuffle_(poolC);
+  // Determine pattern index: (drawNo-1) % patternLen
+  const patIdx = (nextDrawNo - 1) % DRAW_PATTERN.length;
 
-  // Choose category
-  const chooseFrom = (cat)=>{
-    if(cat==="A" && poolA.length) return poolA.shift();
-    if(cat==="B" && poolB.length) return poolB.shift();
-    if(cat==="C" && poolC.length) return poolC.shift();
-    return null;
-  }
-
-  function remaining_(){
-    return poolA.length + poolB.length + poolC.length;
-  }
-
-  // Decide next category with constraint: avoid adjacent non-B (A/C next to A/C).
-  let next = null;
-  const hasB = ()=> poolB.length>0;
-  const nonBCount = ()=> poolA.length + poolC.length;
-
-  if(lastCat === "A" || lastCat === "C"){
-    // must pick B if possible, else pick same category if only that remains, else pick any available (best-effort)
-    if(hasB()) next = chooseFrom("B");
-    else {
-      // No B: best-effort - avoid switching A<->C if possible (A next C or C next A)
-      // Prefer same as lastCat if available; else pick whatever remains.
-      next = chooseFrom(lastCat) || chooseFrom(lastCat==="A" ? "C" : "A") || chooseFrom("B");
-    }
-  } else {
-    // last is B or empty: pick from A/C if possible, but ensure we will be able to separate next non-B with B when possible
-    if(nonBCount()===0 && hasB()) next = chooseFrom("B");
-    else {
-      // Prefer to place non-B between B's, so: if B exists, pick from (A or C) with larger remaining.
-      // If B doesn't exist, any is fine.
-      if(nonBCount()>0){
-        if(poolA.length >= poolC.length) next = chooseFrom("A") || chooseFrom("C");
-        else next = chooseFrom("C") || chooseFrom("A");
-      } else {
-        next = chooseFrom("B");
-      }
-    }
-  }
-
-  if(!next){
-    // fallback any remaining
-    next = chooseFrom("B") || chooseFrom("A") || chooseFrom("C");
-  }
+  // Pick next using pattern best-effort
+  const next = chooseNextByPattern_(poolA, poolB, poolC, patIdx);
   if(!next) throw new Error("Peserta habis.");
 
-  // Mark participant as inactive (so cannot be drawn again)
+  // Mark inactive
   participantsSetActive_(next.id, false);
 
   // Append to draws
-  const shD = sheet_("Draws", ["draw_no","ts","name","unit","category","participant_id","by_nik"]);
-  const drawNo = Math.max(0, shD.getLastRow()-1) + 1;
   const ts = new Date().toISOString();
-  shD.appendRow([drawNo, ts, next.name, next.unit, next.category, next.id, ses.who]);
+  shD.appendRow([nextDrawNo, ts, next.name, next.unit, next.category, next.id, ses.who]);
 
   // Update current
   const current = {
-    drawNo, ts,
+    drawNo: nextDrawNo, ts,
     name: next.name,
     unit: next.unit,
     category: next.category,
@@ -337,7 +281,6 @@ function drawNext_(p){
   return { ok:true, current };
 }
 
-// NEW: Run full draw in one click (writes all results at once)
 function drawRunAll_(p){
   const token = String(p.token || "").trim();
   const ses = tokenValidate_(token, "trigger");
@@ -349,42 +292,20 @@ function drawRunAll_(p){
   const parts = participantsReadActive_();
   if(parts.length === 0) throw new Error("Tidak ada peserta aktif untuk diacak.");
 
-  // Pools (shuffled)
+  // Pools (shuffled once)
   const poolA = shuffleArr_(parts.filter(x=>x.category==="A"));
   const poolB = shuffleArr_(parts.filter(x=>x.category==="B"));
   const poolC = shuffleArr_(parts.filter(x=>x.category==="C"));
 
   const rows = [];
-  let lastCat = "";
   let drawNo = 1;
   let t = new Date().getTime();
 
-  const chooseFrom = (cat)=>{
-    if(cat==="A" && poolA.length) return poolA.shift();
-    if(cat==="B" && poolB.length) return poolB.shift();
-    if(cat==="C" && poolC.length) return poolC.shift();
-    return null;
-  };
-  const hasB = ()=> poolB.length>0;
-  const nonBCount = ()=> poolA.length + poolC.length;
   const anyRemain = ()=> poolA.length + poolB.length + poolC.length;
 
   while(anyRemain() > 0){
-    let next = null;
-    if(lastCat === "A" || lastCat === "C"){
-      if(hasB()) next = chooseFrom("B");
-      else next = chooseFrom(lastCat) || chooseFrom(lastCat==="A"?"C":"A") || chooseFrom("B");
-    } else {
-      if(nonBCount() === 0 && hasB()) next = chooseFrom("B");
-      else if(nonBCount() > 0){
-        // pick whichever non-B larger first
-        if(poolA.length >= poolC.length) next = chooseFrom("A") || chooseFrom("C");
-        else next = chooseFrom("C") || chooseFrom("A");
-      } else {
-        next = chooseFrom("B");
-      }
-    }
-    if(!next) next = chooseFrom("B") || chooseFrom("A") || chooseFrom("C");
+    const patIdx = (drawNo - 1) % DRAW_PATTERN.length; // B,A,B,A,C repeat
+    const next = chooseNextByPattern_(poolA, poolB, poolC, patIdx);
     if(!next) break;
 
     // mark inactive
@@ -392,14 +313,13 @@ function drawRunAll_(p){
 
     const ts = new Date(t).toISOString();
     rows.push([drawNo, ts, next.name, next.unit, next.category, next.id, ses.who]);
-    lastCat = next.category;
     drawNo++;
-    t += 250; // small increment so timestamps are unique-ish
+    t += 250;
   }
 
-  // write batch
+  // batch write
   if(rows.length){
-    shD.getRange(shD.getLastRow()+1, 1, rows.length, rows[0].length).setValues(rows);
+    shD.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
   }
 
   // update current => last
@@ -643,6 +563,28 @@ function participantsSetActive_(id, active){
   sh.getRange(2+idx, 5).setValue(active ? "TRUE" : "FALSE");
   sh.getRange(2+idx, 6).setValue(new Date().toISOString());
   return true;
+}
+
+function chooseNextByPattern_(poolA, poolB, poolC, startIdx){
+  // startIdx = index pola yang diinginkan saat ini (0..DRAW_PATTERN.length-1)
+  // best-effort: coba kategori sesuai pola dari startIdx maju, lalu fallback kategori apa saja
+  const pick = (cat)=>{
+    if(cat==="A" && poolA.length) return poolA.shift();
+    if(cat==="B" && poolB.length) return poolB.shift();
+    if(cat==="C" && poolC.length) return poolC.shift();
+    return null;
+  };
+
+  // 1) coba sesuai urutan pola mulai dari startIdx (wrap)
+  for(let k=0;k<DRAW_PATTERN.length;k++){
+    const idx = (startIdx + k) % DRAW_PATTERN.length;
+    const cat = DRAW_PATTERN[idx];
+    const it = pick(cat);
+    if(it) return it;
+  }
+
+  // 2) fallback kategori apa saja yang masih ada
+  return pick("B") || pick("A") || pick("C") || null;
 }
 
 function shuffleArr_(arr){
