@@ -1,5 +1,7 @@
   let currentUnit = localStorage.getItem('currentUnit');
   let currentUnitData = [];
+  let currentGroups = [];
+  let groupModalOpen = false;
   let isEditing = false;
 
   // ADMIN dashboard state
@@ -83,6 +85,16 @@
       '>': '&gt;',
       '"': '&quot;'
     }[c]));
+  }
+
+  // Escape untuk HTML attribute (value="", data-*, dll)
+  function escapeAttr(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
   }
 
   // GAS URL (/exec) tetap boleh, karena JSONP akan lolos redirect 302
@@ -253,6 +265,10 @@
     if(qa){
       qa.addEventListener('input', () => renderAdminTable());
     }
+    const gf = document.getElementById('adminGroupFilter');
+    if(gf){
+      gf.addEventListener('change', () => renderAdminTable());
+    }
     const sort = document.getElementById('adminSort');
     if(sort){
       sort.addEventListener('change', () => renderAdminUnitList());
@@ -324,6 +340,7 @@
 
       if (data && data.success) {
         currentUnitData = data.data || [];
+        await loadGroups(currentUnit);
         renderTable();
         if (!isEditing) generateNextCode();
       } else {
@@ -335,6 +352,40 @@
     }
   }
 
+  // ========= LOAD GROUPS =========
+  async function loadGroups(unitOverride) {
+    try {
+      const unit = String(unitOverride || currentUnit || '').trim();
+      // admin / invalid unit -> kosongkan saja
+      if (!unit || unit === ADMIN_TOKEN || unit.length !== 4) {
+        currentGroups = [];
+        syncGroupSelectUI(currentGroups);
+        return { success: true, groups: [] };
+      }
+
+      const res = await apiCall('groups.list', { unit });
+      currentGroups = (res && res.success && Array.isArray(res.groups)) ? res.groups : [];
+      syncGroupSelectUI(currentGroups);
+      if (groupModalOpen) renderGroupModal();
+      return { success: true, groups: currentGroups };
+    } catch (err) {
+      console.warn('loadGroups error', err);
+      currentGroups = [];
+      syncGroupSelectUI(currentGroups);
+      return { success: false, groups: [] };
+    }
+  }
+
+  function syncGroupSelectUI(groups) {
+    const sel = document.getElementById('groupSelect');
+    if (!sel) return;
+    const list = Array.isArray(groups) ? groups : (currentGroups || []);
+    const currentVal = sel.value || '';
+    sel.innerHTML = '<option value="">- Tanpa Group -</option>' +
+      list.map(g => `<option value="${escapeAttr(g)}">${escapeHtml(g)}</option>`).join('');
+    if (currentVal && list.includes(currentVal)) sel.value = currentVal;
+  }
+
   function renderTable() {
     const tableBody = document.getElementById('dataTable');
     tableBody.innerHTML = '';
@@ -344,7 +395,7 @@
       ? currentUnitData.filter(item => {
           const hay = [
             item.Code, item.Type, item.Capacity,
-            item.Driver, item.DriverPhone, item.Catatan
+            item.Driver, item.DriverPhone, item.Catatan, item.Group
           ].map(v => String(v||'').toLowerCase()).join(' ');
           return hay.includes(q);
         })
@@ -358,6 +409,7 @@
       row.innerHTML = `
         <td class="px-4 py-3 whitespace-nowrap">
           <div class="font-bold">${item.Code || ''}</div>
+          ${item.Group ? `<div class="inline-flex mt-1 items-center gap-1 text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-sky-100 text-sky-800">${escapeHtml(item.Group)}</div>` : ''}
           <div class="text-xs text-slate-500">${item.DriverPhone || ''}</div>
           ${item.Catatan ? `<div class="text-xs text-slate-500 italic mt-0.5">${escapeHtml(item.Catatan)}</div>` : ''}
         </td>
@@ -569,6 +621,39 @@ function renderAdminRegionList(){
     });
   }
 
+  function adminGetGroupsForUnit(unit){
+    const u = String(unit||'').trim();
+    const set = new Set();
+    adminAllData.forEach(r=>{
+      if(String(r.Unit||'').trim()===u){
+        const g = String(r.Group||'').trim();
+        if(g) set.add(g);
+      }
+    });
+    return Array.from(set).sort((a,b)=> a.localeCompare(b));
+  }
+
+  async function adminSetGroup(id, unit, group){
+    const g = String(group||'').trim();
+    const u = String(unit||'').trim();
+    try{
+      const act = g ? 'vehicle.setGroup' : 'vehicle.clearGroup';
+      const res = await apiCall(act, { id, unit: u, group: g });
+      if(res && res.success){
+        // update local cache
+        const row = adminAllData.find(x => x.id === id);
+        if(row) row.Group = g;
+        toast('Group diperbarui', 'success');
+        renderAdminTable();
+      }else{
+        toast('Gagal set group: ' + (res && res.message ? res.message : 'Unknown'), 'error');
+      }
+    }catch(err){
+      console.error('adminSetGroup error', err);
+      toast('Gagal set group', 'error');
+    }
+  }
+
   function renderAdminTable(){
     const tbody = document.getElementById('adminTable');
     if(!tbody) return;
@@ -585,11 +670,30 @@ function renderAdminRegionList(){
     const stat = adminUnitStats.find(x => x.unit === adminSelectedUnit);
     if(meta && stat) meta.textContent = `${stat.count} kendaraan • Kapasitas sum: ${stat.capSum}`;
 
+    // build group filter options for this unit
+    const gf = document.getElementById('adminGroupFilter');
+    const groups = adminGetGroupsForUnit(adminSelectedUnit);
+    if(gf){
+      const cur = gf.value || 'all';
+      gf.innerHTML = `<option value="all">Semua Group</option>` +
+        `<option value="">Tanpa Group</option>` +
+        groups.map(g=> `<option value="${escapeAttr(g)}">${escapeHtml(g)}</option>`).join('');
+      // restore selection if possible
+      if(cur === 'all' || cur === '' || groups.includes(cur)) gf.value = cur;
+      else gf.value = 'all';
+    }
+    const selectedGroup = gf ? (gf.value || 'all') : 'all';
+
     const q = (document.getElementById('adminSearch')?.value || '').trim().toLowerCase();
     let rows = adminAllData.filter(r => String(r.Unit||'') === adminSelectedUnit);
+
+    if(selectedGroup !== 'all'){
+      rows = rows.filter(r => String(r.Group||'').trim() === String(selectedGroup||'').trim());
+    }
+
     if(q){
       rows = rows.filter(item => {
-        const hay = [item.Unit,item.Code,item.Type,item.Capacity,item.Driver,item.DriverPhone,item.Catatan]
+        const hay = [item.Unit,item.Group,item.Code,item.Type,item.Capacity,item.Driver,item.DriverPhone,item.Catatan]
           .map(v => String(v||'').toLowerCase()).join(' ');
         return hay.includes(q);
       });
@@ -599,6 +703,12 @@ function renderAdminRegionList(){
     rows.forEach(item => {
       const tr = document.createElement('tr');
       tr.className = 'hover:bg-gray-50';
+      const unitGroups = groups; // same unit
+      const gval = String(item.Group||'').trim();
+      const optHtml =
+        `<option value="">- Tanpa -</option>` +
+        unitGroups.map(g=> `<option value="${escapeAttr(g)}">${escapeHtml(g)}</option>`).join('');
+
       tr.innerHTML = `
         <td class="px-4 py-3 whitespace-nowrap">
           <div class="font-bold">${escapeHtml(item.Code||'')}</div>
@@ -610,13 +720,25 @@ function renderAdminRegionList(){
           <div class="text-xs text-gray-500">Capacity: ${escapeHtml(item.Capacity||'')}</div>
         </td>
         <td class="px-4 py-3 whitespace-nowrap">${escapeHtml(item.Driver||'')}</td>
-        <td class="px-4 py-3 whitespace-nowrap"><span class="font-bold">${escapeHtml(item.Unit||'')}</span></td>
+        <td class="px-4 py-3 whitespace-nowrap">
+          <select class="px-2 py-1 rounded-lg border border-slate-200/70 dark:border-white/10 bg-white/90 dark:bg-white/10 text-slate-900 dark:text-white text-sm"
+                  data-admin-group="${escapeAttr(item.id)}">
+            ${optHtml}
+          </select>
+          <div class="text-[11px] text-slate-500 dark:text-white/50 mt-1">${escapeHtml(item.Unit||'')}</div>
+        </td>
       `;
       tbody.appendChild(tr);
+
+      // set select value + bind change
+      const sel = tr.querySelector('[data-admin-group]');
+      if(sel){
+        sel.value = gval; // '' if none
+        sel.addEventListener('change', ()=> adminSetGroup(item.id, item.Unit, sel.value));
+      }
     });
   }
-
-  function adminOpenUnitAsUser(){
+function adminOpenUnitAsUser(){
     if(!adminSelectedUnit) return toast('Pilih unit dulu.', 'warn');
     currentUnit = adminSelectedUnit;
     localStorage.setItem('currentUnit', currentUnit);
@@ -633,6 +755,7 @@ function renderAdminRegionList(){
       id: document.getElementById('editId').value,
       unit: currentUnit,
       code: document.getElementById('fullCode').textContent,
+      group: (document.getElementById('groupSelect')?.value || '').trim(),
       type: document.getElementById('type').value,
       capacity: document.getElementById('capacity').value,
       driver: document.getElementById('driver').value,
@@ -685,6 +808,9 @@ function renderAdminRegionList(){
     document.getElementById('kodeJenis').value = String(item.Code || '').substring(4, 6);
     document.getElementById('kodeNumber').textContent = String(item.Code || '').substring(7);
     document.getElementById('fullCode').textContent = item.Code || '';
+
+    const gs = document.getElementById('groupSelect');
+    if(gs){ gs.value = (item.Group || ''); }
 
     document.getElementById('type').value = item.Type || '';
     document.getElementById('capacity').value = item.Capacity || '';
@@ -801,3 +927,214 @@ function ensureQr(targetEl, text, sizePx=900){
   function closePrintModal() {
     document.getElementById('printModal').classList.add('hidden');
   }
+
+  // =========================
+  // GROUP UI (Drag & Drop)
+  // =========================
+
+  async function createGroup(){
+    if(!currentUnit) return;
+    const btn = document.getElementById('btnCreateGroup');
+    const sp = document.getElementById('createGroupSpinner');
+    if(btn) btn.disabled = true;
+    if(sp) sp.classList.remove('hidden');
+    try{
+      const res = await apiCall('groups.create', { unit: currentUnit });
+      if(res && res.success){
+        toast('Group dibuat: ' + res.group, 'success');
+        await loadGroups();
+        await loadData(); // refresh list (jaga-jaga ada perubahan)
+        renderGroupModal();
+      }else{
+        toast('Gagal membuat group: ' + (res && res.message ? res.message : 'Unknown'), 'error');
+      }
+    }catch(err){
+      console.error('createGroup error', err);
+      toast('Gagal membuat group', 'error');
+    }finally{
+      if(btn) btn.disabled = false;
+      if(sp) sp.classList.add('hidden');
+    }
+  }
+
+  // =========================
+  // GROUP DELETE
+  // =========================
+  async function deleteGroup(groupName){
+    groupName = String(groupName || '').trim();
+    if(!currentUnit || !groupName) return;
+
+    // hitung anggota (client-side) untuk UX cepat
+    const members = (currentUnitData||[]).filter(v => String(v.Group||'').trim() === groupName);
+    if(members.length > 0){
+      toast(`Group "${groupName}" masih dipakai (${members.length} kendaraan). Pindahkan dulu ke Tanpa Group.`, 'warn', 3800);
+      return;
+    }
+
+    const ok = await confirmDialog(`Hapus group "${groupName}"?`, 'Hapus Group');
+    if(!ok) return;
+
+    try{
+      // backend tetap cek ulang agar aman
+      const res = await apiCall('groups.delete', { unit: currentUnit, group: groupName });
+
+      if(res && res.success){
+        toast(`Group dihapus: ${groupName}`, 'success');
+        await loadGroups();      // refresh list group
+        // tidak wajib loadData karena kendaraan sudah 0 anggota (tidak ada perubahan data kendaraan)
+        renderGroupModal();
+        syncGroupSelectUI(currentGroups);
+      }else{
+        const msg = (res && res.message) ? res.message : 'Gagal menghapus group';
+        toast(msg, 'error', 4000);
+        // jika ternyata backend bilang masih dipakai, refresh data & modal biar konsisten
+        await loadData();
+        await loadGroups();
+        renderGroupModal();
+      }
+    }catch(err){
+      console.error('deleteGroup error', err);
+      toast('Gagal menghapus group', 'error');
+    }
+  }
+
+  function renderGroupModal(){
+    const ungroupList = document.getElementById('ungroupList');
+    const ungroupCount = document.getElementById('ungroupCount');
+    const board = document.getElementById('groupsBoard');
+    const ungroupDrop = document.getElementById('ungroupDrop');
+    if(!ungroupList || !board || !ungroupDrop) return;
+
+    // drop zone events (clear group)
+    wireDropZone(ungroupDrop, '');
+
+    const ungrouped = (currentUnitData||[]).filter(v => !String(v.Group||'').trim());
+    if(ungroupCount) ungroupCount.textContent = String(ungrouped.length);
+
+    ungroupList.innerHTML = ungrouped.map(v => renderDraggableVehicleCard(v)).join('');
+    wireDraggables(ungroupList);
+
+    board.innerHTML = (currentGroups||[]).length
+      ? (currentGroups||[]).map(g => renderGroupColumn(g)).join('')
+      : `<div class="text-sm text-slate-500 dark:text-white/60">Belum ada group. Klik <b>+ Buat Group</b> untuk membuat STWE1, STWE2, dst.</div>`;
+
+    // after render, wire droppables and draggables inside columns
+    board.querySelectorAll('[data-drop-group]').forEach(el=>{
+      wireDropZone(el, el.getAttribute('data-drop-group') || '');
+    });
+    board.querySelectorAll('[data-drag-list]').forEach(el=>{
+      wireDraggables(el);
+    });
+  }
+
+    function renderGroupColumn(groupName){
+    const members = (currentUnitData||[]).filter(v => String(v.Group||'').trim() === groupName);
+    const disabled = members.length > 0;
+
+    return `
+      <div class="rounded-2xl border border-slate-200/60 dark:border-white/10 bg-slate-50/40 dark:bg-white/5 p-4">
+        <div class="flex items-center justify-between mb-2 gap-2">
+          <div class="min-w-0">
+            <div class="font-extrabold truncate">${escapeHtml(groupName)}</div>
+            <div class="text-xs text-slate-500 dark:text-white/60">${members.length} kendaraan</div>
+          </div>
+
+          <button type="button"
+            class="shrink-0 px-2.5 py-2 rounded-xl font-extrabold border
+                  ${disabled
+                    ? 'bg-slate-200/70 text-slate-400 border-slate-200 cursor-not-allowed'
+                    : 'bg-rose-600 hover:bg-rose-700 text-white border-rose-600/30'}"
+            title="${disabled ? 'Tidak bisa hapus: group masih dipakai' : 'Hapus group'}"
+            ${disabled ? 'disabled' : ''}
+            onclick="deleteGroup('${escapeAttr(groupName)}')">
+            <i class="fa-solid fa-trash"></i>
+          </button>
+        </div>
+
+        <div class="group-drop min-h-[120px] rounded-xl border-2 border-dashed border-slate-300/70 dark:border-white/15 p-3"
+            data-drop-group="${escapeAttr(groupName)}">
+          <div class="text-xs text-slate-500 dark:text-white/60 mb-2">Drop kendaraan ke sini.</div>
+          <div class="space-y-2" data-drag-list="1">
+            ${members.map(v => renderDraggableVehicleCard(v)).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderDraggableVehicleCard(v){
+    const code = escapeHtml(v.Code || '');
+    const drv = escapeHtml(v.Driver || '');
+    const phone = escapeHtml(v.DriverPhone || '');
+    return `
+      <div class="drag-vehicle rounded-xl border border-slate-200/60 dark:border-white/10 bg-white dark:bg-slate-900 px-3 py-2 shadow-sm"
+           draggable="true" data-vehicle-id="${escapeAttr(v.id)}">
+        <div class="font-extrabold text-sm">${code}</div>
+        <div class="text-xs text-slate-500 dark:text-white/60">${drv} • ${phone}</div>
+      </div>
+    `;
+  }
+
+  function wireDraggables(rootEl){
+    rootEl.querySelectorAll('[data-vehicle-id]').forEach(el=>{
+      el.addEventListener('dragstart', (ev)=>{
+        ev.dataTransfer.setData('text/plain', el.getAttribute('data-vehicle-id') || '');
+        ev.dataTransfer.effectAllowed = 'move';
+      });
+    });
+  }
+
+  function wireDropZone(zoneEl, groupName){
+    // prevent double bind
+    if(zoneEl.__wiredDrop) return;
+    zoneEl.__wiredDrop = true;
+
+    zoneEl.addEventListener('dragover', (ev)=>{
+      ev.preventDefault();
+      zoneEl.classList.add('drag-over');
+      ev.dataTransfer.dropEffect = 'move';
+    });
+    zoneEl.addEventListener('dragleave', ()=>{
+      zoneEl.classList.remove('drag-over');
+    });
+    zoneEl.addEventListener('drop', async (ev)=>{
+      ev.preventDefault();
+      zoneEl.classList.remove('drag-over');
+      const id = ev.dataTransfer.getData('text/plain');
+      if(!id) return;
+
+      try{
+        const act = groupName ? 'vehicle.setGroup' : 'vehicle.clearGroup';
+        const res = await apiCall(act, { id, group: groupName, unit: currentUnit });
+        if(res && res.success){
+          // update local state without full reload for snappy UX
+          const item = currentUnitData.find(v => v.id === id);
+          if(item) item.Group = groupName || '';
+          renderGroupModal();
+        }else{
+          toast('Gagal set group: ' + (res && res.message ? res.message : 'Unknown'), 'error');
+        }
+      }catch(err){
+        console.error('drop set group error', err);
+        toast('Gagal set group', 'error');
+      }
+    });
+  }
+
+function openGroupModal(){
+  if(!currentUnit){ return toast('Pilih unit terlebih dahulu.', 'warn'); }
+  groupModalOpen = true;
+  document.body.classList.add('overflow-hidden'); // <-- tambah
+  const m = document.getElementById('groupModal');
+  if(m) m.classList.remove('hidden');
+  const u = document.getElementById('groupModalUnit');
+  if(u) u.textContent = currentUnit;
+  loadGroups().then(()=> renderGroupModal());
+}
+
+function closeGroupModal(){
+  groupModalOpen = false;
+  document.body.classList.remove('overflow-hidden'); // <-- tambah
+  const m = document.getElementById('groupModal');
+  if(m) m.classList.add('hidden');
+}

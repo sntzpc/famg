@@ -61,6 +61,7 @@ function getRegionMap_(){
 var HEADERS = [
   "id",
   "Unit",
+  "Group",
   "Code",
   "Type",
   "Capacity",
@@ -108,7 +109,8 @@ function handleRequest_(e) {
           capacity: String(p.capacity || "").trim(),
           driver: String(p.driver || "").trim(),
           driverPhone: String(p.driverPhone || "").trim(),
-          catatan: String(p.catatan || "").trim()
+          catatan: String(p.catatan || "").trim(),
+          group: String(p.group || "").trim()
         });
         break;
 
@@ -121,12 +123,30 @@ function handleRequest_(e) {
           capacity: String(p.capacity || "").trim(),
           driver: String(p.driver || "").trim(),
           driverPhone: String(p.driverPhone || "").trim(),
-          catatan: String(p.catatan || "").trim()
+          catatan: String(p.catatan || "").trim(),
+          group: String(p.group || "").trim()
         });
         break;
 
       case "deleteData":
         result = deleteData_(String(p.id || "").trim());
+        break;
+
+
+      case "groups.list":
+        result = groupsList_(String(p.unit || "").trim());
+        break;
+
+      case "groups.create":
+        result = groupsCreate_(String(p.unit || "").trim());
+        break;
+
+      case "vehicle.setGroup":
+        result = vehicleSetGroup_(String(p.id || "").trim(), String(p.group || "").trim());
+        break;
+
+      case "vehicle.clearGroup":
+        result = vehicleSetGroup_(String(p.id || "").trim(), "");
         break;
 
       default:
@@ -182,14 +202,29 @@ function getSheet_() {
     return String(h || "").trim();
   });
 
+  // ---- Migrasi kolom: Group (setelah Unit) ----
+  var hasGroup = existingHeaders.indexOf("Group") !== -1;
+  if(!hasGroup){
+    // sisipkan setelah kolom Unit (kolom 2)
+    sh.insertColumnAfter(2);
+    sh.getRange(1, 3).setValue("Group").setFontWeight("bold");
+  }
+
+  // refresh headers setelah insert
+  existingHeaders = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(function(h){
+    return String(h || "").trim();
+  });
+
   var hasCatatan = existingHeaders.indexOf("Catatan") !== -1;
   var hasCreated = existingHeaders.indexOf("CreatedAt") !== -1;
   var hasUpdated = existingHeaders.indexOf("UpdatedAt") !== -1;
 
   if (!hasCatatan) {
-    // Insert kolom Catatan di posisi setelah DriverPhone (kolom 7) -> Catatan jadi kolom 8
-    sh.insertColumnAfter(7);
-    sh.getRange(1, 8).setValue("Catatan").setFontWeight("bold");
+    // Insert kolom Catatan setelah DriverPhone (posisi dinamis, aman untuk schema lama/baru)
+    var idxDriverPhone = existingHeaders.indexOf("DriverPhone"); // 0-based
+    var insertAfter = (idxDriverPhone !== -1) ? (idxDriverPhone + 1) : sh.getLastColumn();
+    sh.insertColumnAfter(insertAfter);
+    sh.getRange(1, insertAfter + 1).setValue("Catatan").setFontWeight("bold");
   }
 
   // Pastikan CreatedAt & UpdatedAt ada (jika sheet lama belum lengkap)
@@ -261,6 +296,8 @@ function getData_(unit) {
         out.push({
           id: String(row[idx.id] || ""),
           Unit: String(row[idx.Unit] || ""),
+        Group: (typeof idx.Group !== 'undefined') ? String(row[idx.Group] || "") : "",
+          Group: (typeof idx.Group !== 'undefined') ? String(row[idx.Group] || "") : "",
           Region: String(regionMap[String(row[idx.Unit]||'').trim()] || ''),
           Code: String(row[idx.Code] || ""),
           Type: String(row[idx.Type] || ""),
@@ -319,6 +356,7 @@ function addData_(d) {
   lock.waitLock(20000);
   try {
     var unit = String(d.unit || "").trim();
+    var group = String(d.group || "").trim();
     var code = String(d.code || "").trim();
     var type = String(d.type || "").trim();
     var capacity = parseCapacity_(d.capacity);
@@ -345,7 +383,7 @@ function addData_(d) {
     var ts = new Date();
 
     // Urutan harus mengikuti HEADERS
-    sh.appendRow([id, unit, code, type, capacity, driver, driverPhone, catatan, ts, ts]);
+    sh.appendRow([id, unit, group, code, type, capacity, driver, driverPhone, catatan, ts, ts]);
 
     return { success: true, message: "Data berhasil ditambahkan", id: id };
   } catch (err) {
@@ -361,6 +399,7 @@ function updateData_(d) {
   try {
     var id = String(d.id || "").trim();
     var unit = String(d.unit || "").trim();
+    var group = String(d.group || "").trim();
     var code = String(d.code || "").trim();
     var type = String(d.type || "").trim();
     var capacity = parseCapacity_(d.capacity);
@@ -396,6 +435,7 @@ function updateData_(d) {
 
     // update berdasarkan header map (lebih tahan perubahan kolom)
     sh.getRange(rowIndex, idx.Unit + 1).setValue(unit);
+    if(typeof idx.Group !== 'undefined') sh.getRange(rowIndex, idx.Group + 1).setValue(group);
     sh.getRange(rowIndex, idx.Code + 1).setValue(code);
     sh.getRange(rowIndex, idx.Type + 1).setValue(type);
     sh.getRange(rowIndex, idx.Capacity + 1).setValue(capacity);
@@ -435,6 +475,138 @@ function deleteData_(id) {
   } catch (err) {
     return { success: false, message: String(err) };
   } finally {
+    lock.releaseLock();
+  }
+}
+
+
+// =========================
+// GROUPS (VehicleGroups sheet)
+// =========================
+var GROUP_SHEET_NAME = "VehicleGroups";
+var GROUP_HEADERS = ["Unit","Group","CreatedAt","UpdatedAt"];
+
+function getGroupSheet_(){
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sh = ss.getSheetByName(GROUP_SHEET_NAME);
+  if(!sh){
+    sh = ss.insertSheet(GROUP_SHEET_NAME);
+    sh.getRange(1,1,1,GROUP_HEADERS.length).setValues([GROUP_HEADERS]).setFontWeight("bold");
+    sh.setFrozenRows(1);
+  }else{
+    var lastCol = sh.getLastColumn();
+    if(lastCol < GROUP_HEADERS.length){
+      sh.getRange(1,1,1,GROUP_HEADERS.length).setValues([GROUP_HEADERS]).setFontWeight("bold");
+    }
+  }
+  return sh;
+}
+
+function groupsList_(unit){
+  unit = String(unit||'').trim();
+  if(!unit || unit.length !== 4) return {success:true, groups:[]};
+
+  // ambil dari sheet groups
+  var shG = getGroupSheet_();
+  var v = shG.getDataRange().getValues();
+  var out = [];
+  for(var i=1;i<v.length;i++){
+    if(String(v[i][0]||'').trim() === unit){
+      var g = String(v[i][1]||'').trim();
+      if(g) out.push(g);
+    }
+  }
+
+  // juga ambil dari kolom Group di sheet Kendaraan (jaga-jaga jika ada group dari data lama)
+  var sh = getSheet_();
+  var values = sh.getDataRange().getValues();
+  if(values.length>1){
+    var idx = headerMap_(sh);
+    if(typeof idx.Group !== 'undefined'){
+      for(var r=1;r<values.length;r++){
+        if(String(values[r][idx.Unit]||'').trim()===unit){
+          var gg = String(values[r][idx.Group]||'').trim();
+          if(gg) out.push(gg);
+        }
+      }
+    }
+  }
+
+  // unique + sort natural by trailing number
+  out = Array.from(new Set(out));
+  out.sort(function(a,b){
+    var pa = a.match(/(\d+)$/); var pb = b.match(/(\d+)$/);
+    if(pa && pb && a.replace(/\d+$/,'')===b.replace(/\d+$/,'')){
+      return parseInt(pa[1],10)-parseInt(pb[1],10);
+    }
+    return a.localeCompare(b);
+  });
+
+  return {success:true, groups: out};
+}
+
+function groupsCreate_(unit){
+  unit = String(unit||'').trim();
+  if(!unit || unit.length !== 4) return {success:false, message:'Unit tidak valid'};
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try{
+    var listRes = groupsList_(unit);
+    var groups = (listRes && listRes.groups) ? listRes.groups : [];
+    var maxN = 0;
+    groups.forEach(function(g){
+      var m = String(g||'').trim().match(new RegExp('^'+unit+'(\\d+)$'));
+      if(m){
+        var n = parseInt(m[1],10);
+        if(!isNaN(n) && n>maxN) maxN = n;
+      }
+    });
+    var next = maxN + 1;
+    var name = unit + String(next);
+
+    var shG = getGroupSheet_();
+    var ts = new Date();
+    shG.appendRow([unit, name, ts, ts]);
+
+    return {success:true, group: name};
+  }catch(err){
+    return {success:false, message:String(err)};
+  }finally{
+    lock.releaseLock();
+  }
+}
+
+// set group untuk 1 kendaraan by id (dipakai drag&drop)
+function vehicleSetGroup_(id, group){
+  id = String(id||'').trim();
+  group = String(group||'').trim();
+  if(!id) return {success:false, message:'ID kosong'};
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try{
+    var sh = getSheet_();
+    var idx = headerMap_(sh);
+    if(typeof idx.Group === 'undefined') return {success:false, message:'Kolom Group belum tersedia. Jalankan sekali endpoint getData agar migrasi header.'};
+
+    var values = sh.getDataRange().getValues();
+    var rowIndex = -1;
+    for(var i=1;i<values.length;i++){
+      if(String(values[i][0]||'') === id){
+        rowIndex = i + 1;
+        break;
+      }
+    }
+    if(rowIndex === -1) return {success:false, message:'Data tidak ditemukan'};
+
+    sh.getRange(rowIndex, idx.Group + 1).setValue(group);
+    sh.getRange(rowIndex, idx.UpdatedAt + 1).setValue(new Date());
+
+    return {success:true, message:'Group diperbarui'};
+  }catch(err){
+    return {success:false, message:String(err)};
+  }finally{
     lock.releaseLock();
   }
 }

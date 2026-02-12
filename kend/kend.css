@@ -39,3 +39,26 @@
         .toast-enter-active { transform: translateY(0); opacity: 1; transition: all .18s ease; }
         .toast-exit { opacity: 1; }
         .toast-exit-active { opacity: 0; transition: opacity .18s ease; }
+
+/* ===== Group Drag & Drop ===== */
+.group-drop.drag-over{
+  outline: 3px solid rgba(14,165,233,.55); /* sky-500 */
+  outline-offset: 2px;
+  background: rgba(14,165,233,.06);
+}
+.drag-vehicle{
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.drag-vehicle:active{ cursor: grabbing; }
+
+/* ===== Modal scroll fix (Kelola Group) ===== */
+#groupModal .max-h-\[92vh\]{
+  overscroll-behavior: contain; /* biar scroll tidak "lempar" ke body */
+}
+
+/* Scrollbar halus (opsional) */
+#groupModalBody{
+  -webkit-overflow-scrolling: touch; /* iOS smooth */
+}
