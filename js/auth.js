@@ -582,6 +582,9 @@ class Auth {
                 enable: ll.enable !== false,
                 hiAccuracy: ll.hiAccuracy !== false,
 
+                // kirim posisi pertama segera setelah login
+                instantFirstSend: ll.instantFirstSend !== false,
+
                 // interval utama (default 120 detik utk event besar)
                 sendMinMs: ll.sendMinMs || 120000,
 

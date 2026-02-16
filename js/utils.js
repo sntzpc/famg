@@ -273,6 +273,11 @@ class Utils {
   // - Default diarahkan ke 120 detik + jitter agar tidak "nembak bareng".
   const sendMinMs = Number(opts.sendMinMs || 120000); // default 120 detik
 
+  // Kirim posisi pertama SEGERA setelah tracking mulai (agar instan saat verifikasi NIK)
+  // default: true
+  const instantFirstSend = (opts.instantFirstSend !== undefined) ? !!opts.instantFirstSend : true;
+
+
   // kompatibilitas: beberapa pemanggil memakai hiAccuracy/hiAcc/highAccuracy
   const hiAcc = (opts.highAccuracy !== undefined) ? !!opts.highAccuracy :
                 (opts.hiAccuracy !== undefined) ? !!opts.hiAccuracy :
@@ -291,6 +296,8 @@ class Utils {
     lastSentAt: 0,
     nextDueAt: 0,
     jitterMs: (jitterMaxMs ? Math.floor(Math.random()*jitterMaxMs) : 0),
+    hasEverSent: false,
+    sending: false,
     lastPayloadKey: '',
     lastSentLat: null,
     lastSentLng: null,
@@ -306,8 +313,20 @@ class Utils {
 
     if (!isFinite(lat) || !isFinite(lng)) return false;
 
+    // cegah dobel-send kalau panggilan posisi datang beruntun
+    if (this._liveLoc.sending) return false;
+
+    // Jadwal normal (interval + jitter)
     if (!this._liveLoc.nextDueAt) {
       this._liveLoc.nextDueAt = now + sendMinMs + this._liveLoc.jitterMs;
+    }
+
+    // ✅ Kirim instan pada posisi pertama setelah mulai tracking
+    if (instantFirstSend && !this._liveLoc.hasEverSent) {
+      this._liveLoc.hasEverSent = true; // set segera agar sampleOnce/watchPosition tidak dobel
+      const key = `${lat.toFixed(5)}|${lng.toFixed(5)}|${Math.round(acc)}`;
+      this._liveLoc.lastPayloadKey = key;
+      return true;
     }
 
     if (now >= this._liveLoc.nextDueAt) {
@@ -335,6 +354,10 @@ class Utils {
 
   const send = async (pos, reason='') => {
     if (!window.FGAPI?.public?.pushLiveLocation) return;
+    if (!this._liveLoc || this._liveLoc.sending) return;
+    this._liveLoc.sending = true;
+
+    try {
 
     const loc = {
       lat: pos.coords.latitude,
@@ -366,6 +389,11 @@ class Utils {
     } catch (e) {
       this.queueLiveLocation(this._liveLoc.nik, loc);
       console.warn('pushLiveLocation error:', e?.message || e);
+    } finally {
+      try { if(this._liveLoc) this._liveLoc.sending = false; } catch {}
+    }
+    } finally {
+      try { if(this._liveLoc) this._liveLoc.sending = false; } catch {}
     }
   };
 

@@ -344,6 +344,8 @@ async function rerollReplaceAtIndex(indexToReplace) {
       const fetched = await fetchLatestWinWinnerExcluding(excludeIds);
 
       if (!fetched) {
+        // Tidak ada pengganti (eligible habis)
+        showExhaustedDisplay();
         await rebuildStageFromServer();
         await refreshHistory();
         return;
@@ -540,11 +542,12 @@ function renderStageWinners() {
       const res = await FGAPI.operator.drawDoorprize(token, selectedPrize, n);
       const winners = (res && res.winners) ? res.winners : [];
 
-      if (!winners.length) {
+      if (!winners.length || String(res?.status||'').toUpperCase()==='EMPTY') {
         stopRolling();
-        utils.showNotification('Tidak ada pemenang (mungkin peserta eligible habis).', 'warning');
+        showExhaustedDisplay();
+        utils.showNotification('Peserta undian sudah habis (tidak ada peserta eligible).', 'warning');
         // refresh data tanpa menghambat UX
-      Promise.all([loadPrizes(), refreshHistory()]).catch(()=>{});
+        Promise.all([loadPrizes(), refreshHistory()]).catch(()=>{});
         return;
       }
 
@@ -592,7 +595,13 @@ function renderStageWinners() {
 
     } catch (e) {
       stopRolling();
-      utils.showNotification(String(e.message || e), 'error');
+      const msg = String(e && (e.message||e) || '');
+      if (/eligible|peserta hadir|undi/i.test(msg)) {
+        showExhaustedDisplay();
+        utils.showNotification('Peserta undian sudah habis (tidak ada peserta eligible).', 'warning');
+      } else {
+        utils.showNotification(msg, 'error');
+      }
     }
   }
 

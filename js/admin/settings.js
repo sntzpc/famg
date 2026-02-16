@@ -404,6 +404,62 @@ function settingsFormHtml_(){
           <span class="font-semibold text-gray-800">Debug Mode</span>
         </label>
       </div>
+
+    <!-- LIVE LOCATION -->
+    <div class="p-5 rounded-2xl border bg-white">
+      <div class="font-bold text-gray-800 mb-3"><i class="fas fa-map-marker-alt mr-2 text-emerald-600"></i>Live Location (Live Map)</div>
+      <div class="text-xs text-gray-500 mb-4">
+        Mengatur seberapa cepat peserta mengirim lokasi ke <code>live_locations</code>. Untuk event besar, gunakan interval yang lebih longgar.
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <label class="inline-flex items-center gap-2 p-3 border rounded-xl bg-gray-50 cursor-pointer">
+          <input id="cfg_ll_enable" type="checkbox" class="w-4 h-4" />
+          <span class="font-semibold text-gray-800">Enable Live Location</span>
+        </label>
+
+        <label class="inline-flex items-center gap-2 p-3 border rounded-xl bg-gray-50 cursor-pointer">
+          <input id="cfg_ll_hiacc" type="checkbox" class="w-4 h-4" />
+          <span class="font-semibold text-gray-800">High Accuracy</span>
+        </label>
+
+        <label class="inline-flex items-center gap-2 p-3 border rounded-xl bg-gray-50 cursor-pointer">
+          <input id="cfg_ll_instant" type="checkbox" class="w-4 h-4" />
+          <span class="font-semibold text-gray-800">Kirim Instan Saat Login</span>
+        </label>
+
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Interval Min Kirim (detik)</label>
+          <input id="cfg_ll_sendMinSec" type="number" min="1" class="w-full p-3 border rounded-xl" placeholder="120" />
+          <div class="text-xs text-gray-500 mt-1">Setara <code>liveLocation.sendMinMs</code>.</div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Jitter Maks (detik)</label>
+          <input id="cfg_ll_jitterSec" type="number" min="0" class="w-full p-3 border rounded-xl" placeholder="20" />
+          <div class="text-xs text-gray-500 mt-1">Agar request tidak serentak.</div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Kirim Lebih Cepat Jika Pindah (detik)</label>
+          <input id="cfg_ll_movedMinSec" type="number" min="0" class="w-full p-3 border rounded-xl" placeholder="15" />
+          <div class="text-xs text-gray-500 mt-1">Setara <code>liveLocation.movedMinMs</code>.</div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Jarak Minimal Pindah (meter)</label>
+          <input id="cfg_ll_movedMinMeters" type="number" min="0" class="w-full p-3 border rounded-xl" placeholder="25" />
+          <div class="text-xs text-gray-500 mt-1">Setara <code>liveLocation.movedMinMeters</code>.</div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Sampling Backup (menit)</label>
+          <input id="cfg_ll_sampleEveryMin" type="number" min="1" class="w-full p-3 border rounded-xl" placeholder="10" />
+          <div class="text-xs text-gray-500 mt-1">Jika watchPosition ditahan OS.</div>
+        </div>
+      </div>
+    </div>
+
     </div>
 
     </div>
@@ -602,6 +658,25 @@ async function settingsLoadIntoForm(){
   document.getElementById('cfg_enable_date').checked = !!g('security.enableDateValidation', true);
   document.getElementById('cfg_enable_geo').checked = !!g('security.enableGeofencing', true);
   document.getElementById('cfg_debug').checked = !!g('security.debugMode', false);
+  // Live Location (effective: server patch -> fallback default dari config.js)
+  const llDef = (window.AppConfig && window.AppConfig.liveLocation) ? window.AppConfig.liveLocation : {};
+  const gll = (k, def)=> {
+    const v = g('liveLocation.'+k, undefined);
+    return (v === undefined) ? (llDef?.[k] ?? def) : v;
+  };
+
+  document.getElementById('cfg_ll_enable').checked = !!gll('enable', true);
+  document.getElementById('cfg_ll_hiacc').checked = !!gll('hiAccuracy', true);
+
+  // default true
+  document.getElementById('cfg_ll_instant').checked = (gll('instantFirstSend', true) !== false);
+
+  document.getElementById('cfg_ll_sendMinSec').value = Math.round(Number(gll('sendMinMs', 120000)) / 1000);
+  document.getElementById('cfg_ll_jitterSec').value = Math.round(Number(gll('jitterMaxMs', 20000)) / 1000);
+  document.getElementById('cfg_ll_movedMinSec').value = Math.round(Number(gll('movedMinMs', 15000)) / 1000);
+  document.getElementById('cfg_ll_movedMinMeters').value = Number(gll('movedMinMeters', 25));
+  document.getElementById('cfg_ll_sampleEveryMin').value = Math.round(Number(gll('sampleEveryMs', 10*60*1000)) / 60000);
+
 }
 
 function settingsCollectPatch(){
@@ -718,6 +793,46 @@ setIfNum('security.nikMinLength', 'cfg_nik_len');
 setIfBool('security.enableDateValidation', 'cfg_enable_date');
 setIfBool('security.enableGeofencing', 'cfg_enable_geo');
 setIfBool('security.debugMode', 'cfg_debug');
+
+// Live Location (ms based)
+setIfBool('liveLocation.enable', 'cfg_ll_enable');
+setIfBool('liveLocation.hiAccuracy', 'cfg_ll_hiacc');
+setIfBool('liveLocation.instantFirstSend', 'cfg_ll_instant');
+
+// convert seconds/minutes to ms
+(function(){
+  const v1 = document.getElementById('cfg_ll_sendMinSec')?.value;
+  const n1 = (v1===''||v1==null)? NaN : Number(v1);
+  if(isFinite(n1)) { 
+    // minimal 1 detik
+    patch.liveLocation = patch.liveLocation || {};
+    patch.liveLocation.sendMinMs = Math.max(1000, Math.round(n1*1000));
+  }
+  const v2 = document.getElementById('cfg_ll_jitterSec')?.value;
+  const n2 = (v2===''||v2==null)? NaN : Number(v2);
+  if(isFinite(n2)) {
+    patch.liveLocation = patch.liveLocation || {};
+    patch.liveLocation.jitterMaxMs = Math.max(0, Math.round(n2*1000));
+  }
+  const v3 = document.getElementById('cfg_ll_movedMinSec')?.value;
+  const n3 = (v3===''||v3==null)? NaN : Number(v3);
+  if(isFinite(n3)) {
+    patch.liveLocation = patch.liveLocation || {};
+    patch.liveLocation.movedMinMs = Math.max(0, Math.round(n3*1000));
+  }
+  const v4 = document.getElementById('cfg_ll_movedMinMeters')?.value;
+  const n4 = (v4===''||v4==null)? NaN : Number(v4);
+  if(isFinite(n4)) {
+    patch.liveLocation = patch.liveLocation || {};
+    patch.liveLocation.movedMinMeters = Math.max(0, n4);
+  }
+  const v5 = document.getElementById('cfg_ll_sampleEveryMin')?.value;
+  const n5 = (v5===''||v5==null)? NaN : Number(v5);
+  if(isFinite(n5)) {
+    patch.liveLocation = patch.liveLocation || {};
+    patch.liveLocation.sampleEveryMs = Math.max(60000, Math.round(n5*60000));
+  }
+})();
 
 return patch;
 }

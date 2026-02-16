@@ -1,6 +1,6 @@
 // Konfigurasi
-const SPREADSHEET_ID = '1GOqDTBaRZb6PjX1kHKIZnebNJ4QIENr7cVnoMjZZHqE';
-const SHEET_NAME = 'attendance';
+const SPREADSHEET_ID = '1jwYoZfkzJIG_qkWPcx5pjqmeFfeIR_60ccdr5TbKNIY';
+const SHEET_NAME = 'participants';
 
 // ===== PATCH START: normalize (case-insensitive grouping) + display uppercase =====
 function _normKey(v){
