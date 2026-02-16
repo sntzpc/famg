@@ -229,9 +229,9 @@ function refreshPrizePanel(){
     try {
       const r = await FGAPI.operator.participantsEligible(token, true);
       const rows = r.rows || [];
-      poolNames = rows.map(x => String(x.name || '').trim()).filter(Boolean);
+      poolNames = rows.map(x => String(x.display_name || x.name || '').trim()).filter(Boolean);
     } catch (e) {
-      poolNames = [];
+      poolNames = ['Peserta 001', 'Peserta 002', 'Peserta 003', 'Peserta 004', 'Peserta 005'];
     }
   }
 
@@ -239,16 +239,6 @@ function refreshPrizePanel(){
     if (!poolNames.length) return '—';
     return poolNames[Math.floor(Math.random() * poolNames.length)];
   }
-  function showExhaustedDisplay() {
-    const disp = $('#roll-display');
-    if (disp) disp.textContent = 'PESERTA UNDIAN SUDAH HABIS';
-    setStage('Doorprize', 'Exhausted');
-
-    // sembunyikan tombol stop, tampilkan draw (tetap bisa ganti hadiah/refresh)
-    $('#btn-stop')?.classList.add('hidden');
-    $('#btn-draw')?.classList.remove('hidden');
-  }
-
 
   function startRolling() {
     isRolling = true;
@@ -399,7 +389,7 @@ function renderStageWinners() {
         </div>
 
         <div class="text-3xl md:text-5xl font-extrabold text-gray-900 leading-tight">
-          ${esc(w.name || '-')}
+          ${esc(w.display_name || w.name || '-')}
         </div>
 
         <div class="mt-2 text-base md:text-xl text-gray-700">
@@ -424,7 +414,7 @@ function renderStageWinners() {
       const w = stageWinners[idx];
       if (!w?.name) return;
 
-      if (!confirm(`Hapus pemenang "${w.name}"? (Akan tercatat Tidak Diambil dan otomatis mencari pengganti)`)) return;
+      if (!confirm(`Hapus pemenang "${(w.display_name||w.name)}"? (Akan tercatat Tidak Diambil dan otomatis mencari pengganti)`)) return;
 
       // ✅ disable tombol agar tidak double-click
       btn.disabled = true;
@@ -495,7 +485,7 @@ function renderStageWinners() {
       <tr class="align-top">
         <td class="px-3 py-2 whitespace-nowrap text-gray-600">${esc(w.time_local || '')}</td>
         <td class="px-3 py-2 whitespace-nowrap text-gray-700 font-semibold">${esc(w.slot || '')}</td>
-        <td class="px-3 py-2 text-gray-900 font-semibold">${esc(w.name || '')}</td>
+        <td class="px-3 py-2 text-gray-900 font-semibold">${esc(w.display_name || w.name || '')}</td>
         <td class="px-3 py-2 text-gray-700">${esc(w.nik || '')}</td>
         <td class="px-3 py-2 whitespace-nowrap">${statusBadge(w.status)}</td>
       </tr>
@@ -573,7 +563,7 @@ function renderStageWinners() {
         if (rollingTimer) { clearInterval(rollingTimer); rollingTimer = null; }
 
         const w = winners[i];
-        $('#roll-display').textContent = String(w.name || '—').toUpperCase();
+        $('#roll-display').textContent = String(w.display_name || w.name || '—').toUpperCase();
 
         // Simpan ke stage list (tampil besar di bawah mesin)
         stageWinners.unshift(w);
