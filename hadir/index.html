@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>KMP-1 Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background-color: #f5f5f5;
+            min-height: 100vh;
+            padding: 16px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .nav-bar {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .nav-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0 10px;
+            color: #667eea;
+        }
+
+        .nav-title {
+            flex: 1;
+            font-size: 18px;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .tab-container {
+            display: flex;
+            margin-bottom: 20px;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .tab {
+            flex: 1;
+            padding: 15px;
+            text-align: center;
+            background: white;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 16px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            border-left: 4px solid #667eea;
+        }
+
+        .card:active {
+            transform: scale(0.98);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+
+        .card h3 {
+            font-size: 18px;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        .card .stats {
+            font-size: 14px;
+            color: #666;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .participant-card {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .participant-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .participant-detail {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 4px;
+        }
+
+        .family-list {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .family-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 5px;
+        }
+
+        .family-item {
+            font-size: 13px;
+            color: #666;
+            padding: 3px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .family-item:last-child {
+            border-bottom: none;
+        }
+
+        .table-container {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            overflow-x: auto;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        th {
+            background: #f8f9fa;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            position: sticky;
+            top: 0;
+        }
+
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
+            color: #666;
+        }
+
+        .btn-download {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 16px;
+            transition: background 0.3s;
+        }
+
+        .btn-download:active {
+            background: #218838;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            margin-left: 10px;
+            border: 2px solid #667eea;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+
+        .back-button {
+            display: inline-block;
+            padding: 8px 16px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+
+        .back-button:active {
+            background: #5a6268;
+        }
+
+        .stats-summary {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+        }
+
+        @media (max-width: 480px) {
+            body {
+                padding: 8px;
+            }
+            
+            .header h1 {
+                font-size: 20px;
+            }
+            
+            .card {
+                padding: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>KMP-1 Dashboard</h1>
+            <p>Data Peserta dan Keluarga</p>
+        </div>
+
+        <div class="tab-container">
+            <button class="tab active" onclick="switchTab('cards')">Kartu</button>
+            <button class="tab" onclick="switchTab('table')">Tabel Data</button>
+        </div>
+
+        <div id="cards-tab" class="tab-content active">
+            <div class="nav-bar">
+                <button class="nav-btn" onclick="navigateBack()" id="backBtn" style="visibility: hidden;">←</button>
+                <span class="nav-title" id="navTitle">Region</span>
+                <span class="nav-btn" style="visibility: hidden;">→</span>
+            </div>
+
+            <div id="statsSummary" class="stats-summary" style="display: none;">
+                <div class="stat-item">
+                    <div class="stat-value" id="totalRegions">0</div>
+                    <div class="stat-label">Region</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="totalUnits">0</div>
+                    <div class="stat-label">Unit</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="totalParticipants">0</div>
+                    <div class="stat-label">Peserta</div>
+                </div>
+            </div>
+
+            <div id="contentArea" class="card-grid">
+                <!-- Content will be loaded here -->
+            </div>
+        </div>
+
+        <div id="table-tab" class="tab-content">
+            <button class="btn-download" onclick="downloadExcel()">
+                Download Excel
+            </button>
+            <div id="tableContainer" class="table-container">
+                <!-- Table will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== PATCH START: MOBILE-SAFE JSONP (proven pattern) =====
+
+        // 1) URL WEB APP GAS (exec) - tetap
+        const GAS_URL_EXEC = 'https://script.google.com/macros/s/AKfycbyEEwiFyd5Sh1aEjwv6ifDbvA6CdIu7xR8ZRITjBUySMKLXBLkPuTv6MPbwhjQnlXbgig/exec';
+
+        // 2) URL GOOGLEUSERCONTENT (redirect) - WAJIB benar & publik
+        // Pastikan ini base URL, boleh sudah ada user_content_key & lib (seperti contoh Anda)
+        const GAS_URL_GUC  = 'https://script.googleusercontent.com/macros/echo?user_content_key=AehSKLjRWQqxYk_g23-2RbF7cVPWVfwslH_zugZVyynqK7DVruVU42TcLvm54gVdEyecrVcNF-CiK4o6UwbzsYnKuReGf3YM0P8HwR9CIiOte3U7-J44P7R_zCP3V5_X2jO8cxnfV3Jb5CMko_uc7tO4FV3b9bks36czu5Aqy38r-Dy3lnMO5lUA7dWHyNj0FfpvrRnSH4gBg1CosvdOW74YqIRT3pbdSZtclWt_HZCyvsszhzsOX9TRW5YbP9-d5P2sXG_WbLcrHCvVHEYX2cP0yBCXYxrpEUrkx3cy8How&lib=Mn-KZdQbhj4j7zlZB2gMyYEmSx4WqhLym';
+
+        // cache last-good base (agar makin stabil di mobile)
+        const LS_KEY_LAST_GOOD_BASE = 'famg_dash_last_good_base_v1';
+
+        function buildJsonpUrl(baseUrl, params, cbName){
+        const q = new URLSearchParams({
+            ...params,
+            callback: cbName,
+            _t: Date.now().toString()
+        });
+        return baseUrl + (baseUrl.includes('?') ? '&' : '?') + q.toString();
+        }
+
+        function jsonpCallOnce(baseUrl, params, timeoutMs = 30000){
+        return new Promise((resolve, reject) => {
+            const cb = '__kmp1_jsonp_' + Date.now() + '_' + Math.random().toString(16).slice(2);
+            let script = null;
+            let done = false;
+
+            const cleanUp = () => {
+            try { delete window[cb]; } catch(e){ window[cb] = undefined; }
+            if(script && script.parentNode) script.parentNode.removeChild(script);
+            };
+
+            const timer = setTimeout(() => {
+            if(done) return;
+            done = true;
+            cleanUp();
+            reject(new Error('Timeout: Tidak ada respon dari server (JSONP).'));
+            }, timeoutMs);
+
+            window[cb] = (data) => {
+            if(done) return;
+            done = true;
+            clearTimeout(timer);
+            cleanUp();
+            resolve(data);
+            };
+
+            const url = buildJsonpUrl(baseUrl, params, cb);
+
+            script = document.createElement('script');
+            script.async = true;
+            script.defer = true;
+            script.src = url;
+
+            // tambahan kompatibilitas Chrome mobile (ini penting!)
+            script.crossOrigin = 'anonymous';
+            script.referrerPolicy = 'no-referrer-when-downgrade';
+
+            script.onerror = () => {
+            if(done) return;
+            done = true;
+            clearTimeout(timer);
+            cleanUp();
+            reject(new Error('Gagal memuat JSONP. URL tidak publik / diblokir / salah base URL.'));
+            };
+
+            document.head.appendChild(script);
+        });
+        }
+
+        function getBaseCandidates(){
+        const list = [];
+
+        // 1) last good base
+        const lastGood = (localStorage.getItem(LS_KEY_LAST_GOOD_BASE) || '').trim();
+        if(lastGood) list.push(lastGood);
+
+        // 2) GUC
+        const guc = String(GAS_URL_GUC || '').trim();
+        if(guc && guc.startsWith('https://script.googleusercontent.com/')) list.push(guc);
+
+        // 3) EXEC fallback
+        list.push(GAS_URL_EXEC);
+
+        // unique
+        return Array.from(new Set(list));
+        }
+
+        /**
+         * apiJsonp(action, params)
+         * params otomatis ditambah action.
+         */
+        async function apiJsonp(action, params = {}, timeoutMs = 30000){
+        const candidates = getBaseCandidates();
+        let lastErr = null;
+
+        // gabungkan action ke params (biar konsisten)
+        const payload = { ...params, action };
+
+        for(const baseUrl of candidates){
+            try{
+            const res = await jsonpCallOnce(baseUrl, payload, timeoutMs);
+            // simpan base yang berhasil
+            localStorage.setItem(LS_KEY_LAST_GOOD_BASE, baseUrl);
+            return res;
+            }catch(err){
+            lastErr = err;
+            }
+        }
+
+        const hint =
+            'Pastikan Web App GAS: Execute as Me, Who has access: Anyone. ' +
+            'Dan pastikan GAS_URL_GUC benar (domain script.googleusercontent.com).';
+
+        throw new Error(((lastErr && lastErr.message) ? lastErr.message : 'Gagal memuat data') + ' | ' + hint);
+        }
+
+        // ===== PATCH END: MOBILE-SAFE JSONP =====  
+        
+        // State management
+        let currentLevel = 'region'; // region, unit, participants
+        let selectedRegion = '';
+        let selectedUnit = '';
+        let allData = [];
+
+        // Inisialisasi
+        document.addEventListener('DOMContentLoaded', function() {
+            loadRegions();
+            loadAllData();
+        });
+
+        // Switch tab
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            if (tab === 'cards') {
+                document.querySelector('.tab').classList.add('active');
+                document.getElementById('cards-tab').classList.add('active');
+            } else {
+                document.querySelectorAll('.tab')[1].classList.add('active');
+                document.getElementById('table-tab').classList.add('active');
+                if (allData.length === 0) {
+                    loadAllData();
+                } else {
+                    displayTable(allData);
+                }
+            }
+        }
+
+        // Navigasi back
+        function navigateBack() {
+            if (currentLevel === 'unit') {
+                currentLevel = 'region';
+                selectedRegion = '';
+                document.getElementById('navTitle').textContent = 'Region';
+                document.getElementById('statsSummary').style.display = 'none';
+                document.getElementById('backBtn').style.visibility = 'hidden';
+                loadRegions();
+            } else if (currentLevel === 'participants') {
+                currentLevel = 'unit';
+                document.getElementById('navTitle').textContent = `Unit - ${selectedRegion}`;
+                document.getElementById('backBtn').style.visibility = 'visible';
+                loadUnits(selectedRegion);
+            }
+        }
+
+        // Load regions
+        function loadRegions() {
+            showLoading();
+            apiJsonp('getRegions')
+                .then(result => result && result.success ? displayRegions(result.data) : showError((result&&result.error)||'Gagal memuat data region'))
+                .catch(err => { console.error(err); showError('Terjadi kesalahan koneksi'); });
+            }
+
+        // Display regions
+        function displayRegions(regions) {
+            const contentArea = document.getElementById('contentArea');
+            contentArea.innerHTML = '';
+
+            regions.forEach(region => {
+                const card = document.createElement('div');
+                card.className = 'card';
+
+                // simpan key untuk request, name untuk display
+                card.onclick = () => selectRegion(region);
+
+                card.innerHTML = `
+                <h3>${region.name}</h3>
+                <div class="stats">
+                    <span>Unit: ${Object.keys(region.units || {}).length}</span>
+                    <span>Total Peserta: ${region.totalParticipants || 0}</span>
+                </div>
+                `;
+                contentArea.appendChild(card);
+            });
+            }
+
+        // Select region
+        function selectRegion(regionObj) {
+            currentLevel = 'unit';
+            selectedRegion = regionObj.key;         // key normalized untuk query
+            document.getElementById('navTitle').textContent = `Unit - ${regionObj.name}`; // display uppercase
+            document.getElementById('backBtn').style.visibility = 'visible';
+            document.getElementById('statsSummary').style.display = 'none';
+            loadUnits(selectedRegion);
+            }
+
+        // Load units
+        function loadUnits(regionKey) {
+            showLoading();
+            apiJsonp('getUnits', { region: regionKey })
+                .then(result => result && result.success ? displayUnits(result.data) : showError((result&&result.error)||'Gagal memuat data unit'))
+                .catch(err => { console.error(err); showError('Terjadi kesalahan koneksi'); });
+            }
+
+        // Display units
+        function displayUnits(units) {
+            const contentArea = document.getElementById('contentArea');
+            contentArea.innerHTML = '';
+
+            units.forEach(unit => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.onclick = () => selectUnit(unit);
+
+                card.innerHTML = `
+                <h3>${unit.name}</h3>
+                <div class="stats">
+                    <span>Total Peserta: ${unit.totalParticipants || 0}</span>
+                </div>
+                `;
+                contentArea.appendChild(card);
+            });
+            }
+
+        // Select unit
+        function selectUnit(unitObj) {
+            currentLevel = 'participants';
+            selectedUnit = unitObj.key; // key normalized untuk query
+            document.getElementById('navTitle').textContent = `Peserta - ${unitObj.name}`; // display uppercase
+            loadParticipants(selectedRegion, selectedUnit);
+            }
+
+        // Load participants
+        function loadParticipants(regionKey, unitKey) {
+            showLoading();
+            apiJsonp('getParticipants', { region: regionKey, unit: unitKey })
+                .then(result => result && result.success ? displayParticipants(result.data) : showError((result&&result.error)||'Gagal memuat data peserta'))
+                .catch(err => { console.error(err); showError('Terjadi kesalahan koneksi'); });
+            }
+
+        // Display participants
+        function displayParticipants(participants) {
+            const contentArea = document.getElementById('contentArea');
+            contentArea.innerHTML = '';
+            
+            participants.forEach(p => {
+                const card = document.createElement('div');
+                card.className = 'participant-card';
+                
+                let familyHtml = '';
+                if (p.family && p.family.length > 0) {
+                    familyHtml = `
+                        <div class="family-list">
+                            <div class="family-title">Anggota Keluarga (${p.family.length}):</div>
+                            ${p.family.map(f => `<div class="family-item">${f}</div>`).join('')}
+                        </div>
+                    `;
+                }
+                
+                card.innerHTML = `
+                    <div class="participant-name">${p.name}</div>
+                    <div class="participant-detail">NIK: ${p.nik}</div>
+                    <div class="participant-detail">Event ID: ${p.eventId}</div>
+                    <div class="participant-detail">Waktu: ${formatDate(p.timestamp)}</div>
+                    ${familyHtml}
+                `;
+                
+                contentArea.appendChild(card);
+            });
+        }
+
+        // Load all data for table
+        function loadAllData() {
+            showTableLoading();
+            apiJsonp('getAllData')
+                .then(result => {
+                if (result && result.success) { allData = result.data || []; displayTable(allData); }
+                else showTableError((result&&result.error)||'Gagal memuat data tabel');
+                })
+                .catch(err => { console.error(err); showTableError('Terjadi kesalahan koneksi'); });
+            }
+
+        // Display table
+        function displayTable(data) {
+            const tableContainer = document.getElementById('tableContainer');
+            
+            if (!data || data.length === 0) {
+                tableContainer.innerHTML = '<p style="text-align: center; padding: 20px;">Tidak ada data</p>';
+                return;
+            }
+            
+            let html = '<table><thead><tr>';
+            
+            // Headers
+            const headers = Object.keys(data[0]);
+            headers.forEach(header => {
+                html += `<th>${header}</th>`;
+            });
+            html += '</tr></thead><tbody>';
+            
+            // Data rows
+            data.forEach(row => {
+                html += '<tr>';
+                headers.forEach(header => {
+                    let value = row[header] || '';
+                    if (header === 'timestamp') {
+                        value = formatDate(value);
+                    }
+                    html += `<td>${value}</td>`;
+                });
+                html += '</tr>';
+            });
+            
+            html += '</tbody></table>';
+            tableContainer.innerHTML = html;
+        }
+
+        // Download Excel
+        function downloadExcel() {
+        if (!window.XLSX) {
+            alert('Library Excel belum siap. Coba tunggu 2-3 detik lalu klik lagi.');
+            return;
+        }
+        if (!allData || allData.length === 0) {
+            alert('Tidak ada data untuk di-download');
+            return;
+        }
+        const ws = XLSX.utils.json_to_sheet(allData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Participants');
+        XLSX.writeFile(wb, `kmp1_participants_${new Date().toISOString().split('T')[0]}.xlsx`);
+        }
+
+        // Helper: format date
+        function formatDate(timestamp) {
+            if (!timestamp) return '-';
+            try {
+                const date = new Date(timestamp);
+                return date.toLocaleString('id-ID');
+            } catch {
+                return timestamp;
+            }
+        }
+
+        // Helper: show loading
+        function showLoading() {
+            document.getElementById('contentArea').innerHTML = '<div class="loading">Memuat data...</div>';
+        }
+
+        function showTableLoading() {
+            document.getElementById('tableContainer').innerHTML = '<div class="loading">Memuat data...</div>';
+        }
+
+        function showError(message) {
+            document.getElementById('contentArea').innerHTML = `<div class="error">${message}</div>`;
+        }
+
+        function showTableError(message) {
+            document.getElementById('tableContainer').innerHTML = `<div class="error">${message}</div>`;
+        }
+
+        // Include SheetJS library
+        const script = document.createElement('script');
+        script.src = 'https://cdn.sheetjs.com/xlsx-0.19.2/package/dist/xlsx.full.min.js';
+        document.head.appendChild(script);
+    </script>
+</body>
+</html>
